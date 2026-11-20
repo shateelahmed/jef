@@ -210,8 +210,8 @@ count_path_lines() { grep -cF "$HOME/.jef/commands" "$1"; }
     do_install /bin/zsh
     cd "$CLONE"
     case "$OSTYPE" in
-    darwin*) run sh -c "echo n | script -q /dev/null '$JEF_BASH' ./uninstall.sh" ;;
-    *) run sh -c "echo n | script -qec \"'$JEF_BASH' ./uninstall.sh\" /dev/null" ;;
+    darwin*) run env SHELL=/bin/sh sh -c "echo n | script -q /dev/null '$JEF_BASH' ./uninstall.sh" ;;
+    *) run env SHELL=/bin/sh sh -c "echo n | script -qec \"'$JEF_BASH' ./uninstall.sh\" /dev/null" ;;
     esac
     assert_contains "Aborted"
     [ -d "$HOME/.jef" ]
@@ -223,8 +223,8 @@ count_path_lines() { grep -cF "$HOME/.jef/commands" "$1"; }
     do_install /bin/zsh
     cd "$CLONE"
     case "$OSTYPE" in
-    darwin*) run sh -c "(sleep 1; echo y) | script -q /dev/null '$JEF_BASH' ./uninstall.sh" ;;
-    *) run sh -c "(sleep 1; echo y) | script -qec \"'$JEF_BASH' ./uninstall.sh\" /dev/null" ;;
+    darwin*) run env SHELL=/bin/sh sh -c "(sleep 1; echo y) | script -q /dev/null '$JEF_BASH' ./uninstall.sh" ;;
+    *) run env SHELL=/bin/sh sh -c "(sleep 1; echo y) | script -qec \"'$JEF_BASH' ./uninstall.sh\" /dev/null" ;;
     esac
     [ ! -e "$HOME/.jef" ]
 }

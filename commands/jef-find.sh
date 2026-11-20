@@ -45,10 +45,6 @@ directories=()
 local_status=()
 remote_status=()
 
-function strip_color {
-    echo -e "$1" | sed -E 's/\x1B\[[0-9;]*m//g'
-}
-
 # Print the branch status of one repository as two digits: local then remote (1 = exists)
 probe_branch() {
     local child_directory="$1" has_local=0 has_remote=0
@@ -101,14 +97,14 @@ header3="Remote"
 
 endspin
 
-plain_local_status=()
-for status in "${local_status[@]}"; do plain_local_status+=("$(strip_color "$status")"); done
-plain_remote_status=()
-for status in "${remote_status[@]}"; do plain_remote_status+=("$(strip_color "$status")"); done
-
+# Status cells are always 5 (local) and 6 (remote) characters wide on screen.
+# Measure placeholders instead of the cells, because in a non-UTF-8 locale
+# ✔/✘ count as 3 bytes each and would skew the widths.
+local_cell_width=5
+remote_cell_width=6
 col1_width=$(max_length "$header1" "${directories[@]}")
-col2_width=$(max_length "$header2" "${plain_local_status[@]}")
-col3_width=$(max_length "$header3" "${plain_remote_status[@]}")
+col2_width=$(max_length "$header2" "xxxxx")
+col3_width=$(max_length "$header3" "xxxxxx")
 
 
 # Define table borders dynamically
@@ -125,7 +121,7 @@ for i in "${!directories[@]}"; do
     dir_name="${directories[$i]}"
     local_check="${local_status[$i]}"
     remote_check="${remote_status[$i]}"
-    printf "| %-*s | %-*s | %-*s |\n" "$col1_width" "$dir_name" "$col2_width" "$local_check" "$col3_width" "$remote_check"
+    printf "| %-*s | %s%*s | %s%*s |\n" "$col1_width" "$dir_name" "$local_check" $((col2_width - local_cell_width)) "" "$remote_check" $((col3_width - remote_cell_width)) ""
 done
 
 # Print the bottom border
