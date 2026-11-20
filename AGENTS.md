@@ -35,6 +35,7 @@ These rules apply whatever AI coding harness is used (Claude Code, Codex, Copilo
 - You may suggest changes that fit the scenario (a different model, splitting or batching work, more or less verification, tuning `handoff-cost` defaults, changing these rules). Suggestions are applied only with the user's approval.
 
 ### jef specifics
+- Make changes through OpenSpec when applicable (new features, behaviour or flag changes, bug fixes that change observable behaviour, refactors that touch specs): propose a change under `openspec/changes/`, implement it from its tasks, and keep specs in sync. Skip OpenSpec only for trivial edits that don't affect specified behaviour (typos, comments, docs-only tweaks) or when the user says otherwise.
 - Objective checks before any model review: `bash -n` on every changed `.sh` file; `openspec validate --specs --strict` (and `openspec validate <change> --strict`) after spec or change edits.
 - Scripts must work on macOS (bash 3.2, BSD tools) and Linux; reviewers flag GNU-only flags.
 - Never commit, and never run `openspec archive`, unless the user explicitly asks.
