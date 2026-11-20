@@ -20,6 +20,7 @@ cli_name="merge"
 cli_description="Merge one branch into another in every repository that has both"
 cli_positionals="<source_branch> <destination_branch>"
 cli_accepts_proxy=true
+cli_extra_flags=("n|dry-run|dry_run|Show what would happen without changing anything")
 parse_options "$@"
 require_args 2
 
@@ -41,6 +42,7 @@ echo "Target directory: ${green}$target_directory${reset}"
 echo "Source branch: ${green}$source_branch${reset}"
 echo "Target branch: ${green}$target_branch${reset}"
 echo "Clear proxy: ${green}$clear_proxy${reset}"
+echo "Dry run: ${green}$dry_run${reset}"
 
 source "$script_location/lib/clear-proxy.sh"
 
@@ -49,22 +51,35 @@ merge_repo() {
 
     if ! git -C "$child_directory" show-ref --verify --quiet "refs/heads/$source_branch" \
     || ! git -C "$child_directory" show-ref --verify --quiet "refs/heads/$target_branch"; then
+        mark_repo_skipped
         return # source_branch or target_branch does not exist locally
     fi
 
     print_repo_header "$child_directory"
 
+    if $dry_run; then
+        echo "Would merge $source_branch into $target_branch"
+        mark_repo_done
+        return
+    fi
+
     current_branch=$(git -C "$child_directory" branch --show-current)
     if [ "$current_branch" != "$target_branch" ]; then  # if the current git branch is not "$target_branch"
-        git -C "$child_directory" checkout "$target_branch" --
+        git -C "$child_directory" checkout "$target_branch" -- || true
         current_branch=$(git -C "$child_directory" branch --show-current)
     fi
     if [ "$current_branch" != "$target_branch" ]; then  # if the current git branch is not "$target_branch"
         echo "Could not checkout to $target_branch. skipping..."
+        mark_repo_failed
         return # could not checkout to "$target_branch"
     fi
 
-    git -C "$child_directory" merge "$source_branch"
+    if git -C "$child_directory" merge "$source_branch"; then
+        mark_repo_done
+    else
+        mark_repo_failed
+    fi
 }
 
 for_each_repo merge_repo
+finish_run

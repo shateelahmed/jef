@@ -42,8 +42,16 @@ pull_repo() {
     local child_directory="$1" fetch_output current_branch
 
     # Fetch once (output held back), then check the remote-tracking ref locally
-    fetch_output=$(git -C "$child_directory" fetch --all --prune 2>&1)
+    local fetch_failed=""
+    fetch_output=$(git -C "$child_directory" fetch --all --prune 2>&1) || fetch_failed="y"
+    if [ -n "$fetch_failed" ]; then
+        print_repo_header "$child_directory"
+        echo "$fetch_output"
+        mark_repo_failed
+        return
+    fi
     if ! git -C "$child_directory" show-ref --verify --quiet "refs/remotes/origin/$branch_to_pull"; then
+        mark_repo_skipped
         return # the remote does not have the branch: skip silently
     fi
 
@@ -55,15 +63,21 @@ pull_repo() {
 
     current_branch=$(git -C "$child_directory" branch --show-current)
     if [ "$current_branch" != "$branch_to_pull" ]; then  # if the current git branch is not "$branch_to_pull"
-        git -C "$child_directory" checkout "$branch_to_pull" --
+        git -C "$child_directory" checkout "$branch_to_pull" -- || true
         current_branch=$(git -C "$child_directory" branch --show-current)
     fi
     if [ "$current_branch" != "$branch_to_pull" ]; then  # if the current git branch is not "$branch_to_pull"
         echo "Could not checkout to $branch_to_pull. skipping..."
+        mark_repo_failed
         return # could not checkout to "$branch_to_pull"
     fi
 
-    git -C "$child_directory" pull
+    if git -C "$child_directory" pull; then
+        mark_repo_done
+    else
+        mark_repo_failed
+    fi
 }
 
 for_each_repo pull_repo
+finish_run

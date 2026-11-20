@@ -4,6 +4,7 @@
 Deleting a branch locally, and optionally on origin, across all repositories (`jef delete [-r] <branch>`).
 
 ## Requirements
+
 ### Requirement: Delete local branch
 The system SHALL force-delete the given local branch in each repository where it exists, first switching to `DEFAULT_BRANCH` if the branch is currently checked out.
 
@@ -32,3 +33,10 @@ The system SHALL print "Branch not found in any repository" when the branch exis
 #### Scenario: Nowhere
 - **WHEN** no repository has the branch locally (or remotely with `-r`)
 - **THEN** "Branch not found in any repository" is printed
+
+### Requirement: Dry run
+`jef delete` SHALL accept `-n`/`--dry-run`: it prints "Would delete local branch <branch>" and, with `-r`, "Would delete remote branch <branch>" per repository, runs no mutating git command (no checkout, branch deletion or push), leaves repositories and origins unchanged, counts would-be actions as done in the summary, and shows "Dry run: true" in the banner.
+
+#### Scenario: Dry run with remote deletion
+- **WHEN** the user runs `jef delete -n -r feature-x` and a repository has the branch locally and on origin
+- **THEN** both "Would delete" lines are printed and the branch still exists locally and on origin

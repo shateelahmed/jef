@@ -20,6 +20,7 @@ cli_name="push"
 cli_description="Push a branch to origin in every repository that has it locally"
 cli_positionals="<branch>"
 cli_accepts_proxy=true
+cli_extra_flags=("n|dry-run|dry_run|Show what would happen without changing anything")
 parse_options "$@"
 require_args 1
 
@@ -35,6 +36,7 @@ fi
 echo "Target directory: ${green}$target_directory${reset}"
 echo "Branch to push: ${green}$branch_to_push${reset}"
 echo "Clear proxy: ${green}$clear_proxy${reset}"
+echo "Dry run: ${green}$dry_run${reset}"
 
 source "$script_location/lib/clear-proxy.sh"
 
@@ -42,22 +44,35 @@ push_repo() {
     local child_directory="$1" current_branch
 
     if ! git -C "$child_directory" show-ref --verify --quiet "refs/heads/$branch_to_push"; then
+        mark_repo_skipped
         return # branch_to_push does not exist locally
     fi
 
     print_repo_header "$child_directory"
 
+    if $dry_run; then
+        echo "Would push $branch_to_push to origin"
+        mark_repo_done
+        return
+    fi
+
     current_branch=$(git -C "$child_directory" branch --show-current)
     if [ "$current_branch" != "$branch_to_push" ]; then  # if the current git branch is not "$branch_to_push"
-        git -C "$child_directory" checkout "$branch_to_push" --
+        git -C "$child_directory" checkout "$branch_to_push" -- || true
         current_branch=$(git -C "$child_directory" branch --show-current)
     fi
     if [ "$current_branch" != "$branch_to_push" ]; then  # if the current git branch is not "$branch_to_push"
         echo "Could not checkout to $branch_to_push. skipping..."
+        mark_repo_failed
         return # could not checkout to "$branch_to_push"
     fi
 
-    git -C "$child_directory" push -u origin "$branch_to_push"
+    if git -C "$child_directory" push -u origin "$branch_to_push"; then
+        mark_repo_done
+    else
+        mark_repo_failed
+    fi
 }
 
 for_each_repo push_repo
+finish_run

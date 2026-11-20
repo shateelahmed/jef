@@ -59,19 +59,22 @@ Commands and flags (all accept `-d`/`--directory <dir>` to override `TARGET_DIR`
 | Command | Arguments | Extra flags |
 | --- | --- | --- |
 | `jef checkout` | `<branch>` | |
-| `jef delete` | `<branch>` | `-c`/`--clear-proxy`, `-r`/`--delete-remote-branch` |
-| `jef fetch` | | `-c`/`--clear-proxy` |
-| `jef find` | `<branch>` | `-c`/`--clear-proxy` |
-| `jef merge` | `<source_branch> <destination_branch>` | `-c`/`--clear-proxy` |
+| `jef delete` | `<branch>` | `-c`/`--clear-proxy`, `-r`/`--delete-remote-branch`, `-n`/`--dry-run` |
+| `jef fetch` | | `-c`/`--clear-proxy`, `-j`/`--jobs N` |
+| `jef find` | `<branch>` | `-c`/`--clear-proxy`, `-j`/`--jobs N` |
+| `jef merge` | `<source_branch> <destination_branch>` | `-c`/`--clear-proxy`, `-n`/`--dry-run` |
 | `jef pull` | `<branch>` | `-c`/`--clear-proxy` |
-| `jef push` | `<branch>` | `-c`/`--clear-proxy` |
+| `jef push` | `<branch>` | `-c`/`--clear-proxy`, `-n`/`--dry-run` |
 | `jef which` | | |
 
 Notes:
 - Every first level directory that contains a `.git` directory or file is included, so git worktrees and submodules count as repositories. Paths and directory names containing spaces work.
 - Branch names starting with `-` are rejected.
 - Output: colours are used only when stdout is a terminal and the `NO_COLOR` environment variable is unset or empty (see https://no-color.org); piped or redirected output (including `jef find` and `jef which` tables) is plain text without escape codes or spinner characters.
-- Exit codes (useful in scripts): `0` success, `1` target directory not set or not a valid directory, `2` usage error (wrong number of arguments, unknown option or invalid branch name; `--help` exits `0`), `127` unknown `jef` command. Git failures inside individual repositories do not change the exit code.
+- Exit codes (useful in scripts): `0` success, `1` target directory not set or not a valid directory, `2` usage error (wrong number of arguments, unknown option or invalid branch name; `--help` exits `0`), `3` at least one repository failed (a git command failed or the branch could not be checked out; `checkout`, `delete`, `fetch`, `merge`, `pull` and `push` only), `127` unknown `jef` command.
+- Summary: `checkout`, `delete`, `fetch`, `merge`, `pull` and `push` end with `Summary: X done, Y failed, Z skipped` (skipped = the repository was visited but the operation does not apply, e.g. it lacks the branch).
+- `-n`/`--dry-run` (`delete`, `merge`, `push`) prints what would happen ("Would delete local branch X", "Would merge A into B", "Would push X to origin") without running any command that changes a repository; would-be actions count as done.
+- `-j N`/`--jobs N` (`fetch`, `find`) processes up to N repositories at once (positive integer, default 1; anything else exits `2`). Output stays in the normal repository order, so it matches `-j 1`; `fetch` prints each repository's output when all are done.
 
 
 ## Development

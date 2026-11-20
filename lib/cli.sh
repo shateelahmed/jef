@@ -9,12 +9,18 @@
 #   cli_extra_flags    optional array of "short|long|variable|description" entries,
 #                      e.g. "r|delete-remote-branch|delete_remote_branch|Also delete the remote branch"
 #
+#   cli_value_flags    optional array of "short|long|variable|METAVAR|default|type|description" entries for
+#                      flags that take a value (-j N, --jobs N, --jobs=N), e.g.
+#                      "j|jobs|parallel_jobs|N|1|posint|Process up to N repositories at once"
+#                      type "posint" requires a positive integer (else usage error, exit 2)
+#
+# (declare "n|dry-run|dry_run|..." for commands that support --dry-run; see lib/repos.sh finish_run)
 # parse_options "$@" then sets: target_directory (only when -d is given),
 # clear_proxy, each extra-flag variable (true/false) and the cli_positional array.
 
 # Print the command's usage (synopsis, description, options).
 print_usage() {
-    local flag short long var desc
+    local flag short long var desc meta default type
     echo "Usage: jef $cli_name [options]${cli_positionals:+ $cli_positionals}"
     echo
     echo "$cli_description"
@@ -27,6 +33,10 @@ print_usage() {
     for flag in "${cli_extra_flags[@]}"; do
         IFS='|' read -r short long var desc <<< "$flag"
         printf "  %-28s %s\n" "-$short, --$long" "$desc"
+    done
+    for flag in "${cli_value_flags[@]}"; do
+        IFS='|' read -r short long var meta default type desc <<< "$flag"
+        printf "  %-28s %s\n" "-$short, --$long $meta" "$desc"
     done
     printf "  %-28s %s\n" "-h, --help" "Show this help and exit"
 }
@@ -42,7 +52,7 @@ usage_error() {
 }
 
 parse_options() {
-    local OPTIND=1 opt arg flag short long var desc bad
+    local OPTIND=1 opt arg flag short long var desc bad meta default type digits
     local optstring=":d:h" args
     args=()
     cli_positional=()
@@ -55,6 +65,11 @@ parse_options() {
         IFS='|' read -r short long var desc <<< "$flag"
         optstring+="$short"
         printf -v "$var" %s false
+    done
+    for flag in "${cli_value_flags[@]}"; do
+        IFS='|' read -r short long var meta default type desc <<< "$flag"
+        optstring+="$short:"
+        printf -v "$var" %s "$default"
     done
 
     # --help / -h anywhere in the arguments wins
@@ -80,7 +95,15 @@ parse_options() {
                 IFS='|' read -r short long var desc <<< "$flag"
                 if [ "$arg" = "--$long" ]; then bad="$short"; fi
             done
-            if [ -n "$bad" ]; then args+=("-$bad"); else args+=("$arg"); fi
+            for flag in "${cli_value_flags[@]}"; do
+                IFS='|' read -r short long var meta default type desc <<< "$flag"
+                case "$arg" in
+                "--$long") bad="$short" ;;
+                "--$long="*) args+=("-$short" "${arg#*=}"); bad="=" ;;
+                esac
+            done
+            if [ "$bad" = "=" ]; then :
+            elif [ -n "$bad" ]; then args+=("-$bad"); else args+=("$arg"); fi
             ;;
         *) args+=("$arg") ;;
         esac
@@ -106,6 +129,22 @@ parse_options() {
             for flag in "${cli_extra_flags[@]}"; do
                 IFS='|' read -r short long var desc <<< "$flag"
                 if [ "$short" = "$opt" ]; then printf -v "$var" %s true; fi
+            done
+            for flag in "${cli_value_flags[@]}"; do
+                IFS='|' read -r short long var meta default type desc <<< "$flag"
+                if [ "$short" = "$opt" ]; then
+                    if [ "$type" = posint ]; then
+                        digits="$OPTARG"
+                        case "$digits" in
+                        '' | *[!0-9]*) usage_error "option '--$long' needs a positive integer, got '$OPTARG'" ;;
+                        esac
+                        if [ "${#digits}" -gt 6 ] || [ "$((10#$digits))" -lt 1 ]; then
+                            usage_error "option '--$long' needs a positive integer, got '$OPTARG'"
+                        fi
+                        OPTARG=$((10#$digits))
+                    fi
+                    printf -v "$var" %s "$OPTARG"
+                fi
             done
             ;;
         esac

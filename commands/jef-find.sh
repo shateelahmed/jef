@@ -20,6 +20,7 @@ cli_name="find"
 cli_description="Show whether a branch exists locally and on the remote in each repository"
 cli_positionals="<branch>"
 cli_accepts_proxy=true
+cli_value_flags=("j|jobs|parallel_jobs|N|1|posint|Look up up to N repositories at once (default 1)")
 parse_options "$@"
 require_args 1
 
@@ -48,33 +49,50 @@ function strip_color {
     echo -e "$1" | sed -E 's/\x1B\[[0-9;]*m//g'
 }
 
-# Collect the directory name, local status and remote status of one repository
-collect_branch_status() {
-    local child_directory="$1"
+# Print the branch status of one repository as two digits: local then remote (1 = exists)
+probe_branch() {
+    local child_directory="$1" has_local=0 has_remote=0
+    if git -C "$child_directory" show-ref --verify --quiet "refs/heads/$branch_to_find" 2> /dev/null; then
+        has_local=1
+    fi
+    if git -C "$child_directory" ls-remote --exit-code --heads origin "$branch_to_find" &> /dev/null; then
+        has_remote=1
+    fi
+    echo "$has_local$has_remote"
+}
 
-    # Check if the branch exists locally
-    if git -C "$child_directory" show-ref --verify --quiet "refs/heads/$branch_to_find"; then
+# Append the directory name, local status and remote status of one repository
+# Args: $1 child directory, $2 probe_branch result
+add_branch_result() {
+    if [ "${2:0:1}" = 1 ]; then
         local_status+=("${green}  ✔  ${reset}")
     else
         local_status+=("${red}  ✘  ${reset}")
     fi
-
-    # Check if the branch exists remotely
-    git -C "$child_directory" ls-remote --exit-code --heads origin "$branch_to_find" &> /dev/null
-    if [ "$?" == "0" ]; then
+    if [ "${2:1:1}" = 1 ]; then
         remote_status+=("${green}  ✔   ${reset}")
     else
         remote_status+=("${red}  ✘   ${reset}")
     fi
+    directories+=("$(get_directory_name "$1")")
+}
 
-    directories+=("$(get_directory_name "$child_directory")")
+collect_branch_status() {
+    add_branch_result "$1" "$(probe_branch "$1")"
 }
 
 spin &
 # shellcheck disable=SC2034 # read by endspin in lib/spinner.sh
 SPINNER_PID=$!
 
-for_each_repo collect_branch_status
+if [ "$parallel_jobs" -gt 1 ]; then
+    parallel_run probe_branch "$parallel_jobs"
+    for i in "${!repo_list[@]}"; do
+        add_branch_result "${repo_list[$i]}" "$(cat "$parallel_dir/$i.out")"
+    done
+else
+    for_each_repo collect_branch_status
+fi
 
 # Define table headers
 header1="Directory"

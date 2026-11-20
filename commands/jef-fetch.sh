@@ -20,6 +20,7 @@ cli_name="fetch"
 cli_description="Run 'git fetch --all --prune' in every repository"
 cli_positionals=""
 cli_accepts_proxy=true
+cli_value_flags=("j|jobs|parallel_jobs|N|1|posint|Fetch up to N repositories at once (default 1)")
 parse_options "$@"
 
 source "$script_location/lib/common.sh"
@@ -32,7 +33,26 @@ source "$script_location/lib/clear-proxy.sh"
 fetch_repo() {
     local child_directory="$1"
     print_repo_header "$child_directory" ":"
-    git -C "$child_directory" fetch --all --prune
+    if git -C "$child_directory" fetch --all --prune; then
+        mark_repo_done
+    else
+        mark_repo_failed
+    fi
 }
 
-for_each_repo fetch_repo
+# Worker for parallel runs: output to stdout, status 0 (done) or 1 (failed)
+fetch_repo_job() {
+    print_repo_header "$1" ":"
+    if git -C "$1" fetch --all --prune; then
+        return 0
+    fi
+    return 1
+}
+
+if [ "$parallel_jobs" -gt 1 ]; then
+    parallel_run fetch_repo_job "$parallel_jobs"
+    parallel_apply_outcomes
+else
+    for_each_repo fetch_repo
+fi
+finish_run

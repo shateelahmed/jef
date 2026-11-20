@@ -38,6 +38,7 @@ checkout_repo() {
     local child_directory="$1" current_branch
 
     if ! git -C "$child_directory" show-ref --verify --quiet "refs/heads/$branch_to_checkout"; then
+        mark_repo_skipped
         return # branch_to_checkout does not exist locally
     fi
 
@@ -45,15 +46,18 @@ checkout_repo() {
 
     current_branch=$(git -C "$child_directory" branch --show-current)
     if [ "$current_branch" != "$branch_to_checkout" ]; then  # if the current git branch is not "$branch_to_checkout"
-        git -C "$child_directory" checkout "$branch_to_checkout" --
+        git -C "$child_directory" checkout "$branch_to_checkout" -- || true
         current_branch=$(git -C "$child_directory" branch --show-current)
     fi
     if [ "$current_branch" != "$branch_to_checkout" ]; then  # if the current git branch is not "$branch_to_checkout"
         echo "Could not checkout"
+        mark_repo_failed
         return
     fi
 
     echo "Checked out"
+    mark_repo_done
 }
 
 for_each_repo checkout_repo
+finish_run
