@@ -1,99 +1,70 @@
 #!/bin/bash
+# shellcheck disable=SC2154,SC2034 # colour variables come from lib/terminal-color-codes.sh; cli_* are read by lib/cli.sh
 
-# This script runs "git merge" is each directory residing in its parent directory (default) or in the given directory
+# Merge one branch into another in every repository that has both
 
-script_location="$(realpath "$(dirname "${BASH_SOURCE[0]}")/..")"
-
-# Convert long options to short ones
-for arg in "$@"; do
-    shift
-    case "$arg" in
-    "--directory")
-        set -- "$@" "-d" # Convert --directory to -d
-        ;;
-    "--clear-proxy")
-        set -- "$@" "-c" # Convert --clear-proxy to -c
-        ;;
-    *)
-        set -- "$@" "$arg"
-        ;; # Pass through the original argument if no match
+script_path="${BASH_SOURCE[0]}"
+while [ -L "$script_path" ]; do # follow symlinks using plain readlink (portable to old macOS)
+    link_directory="$(cd "$(dirname "$script_path")" && pwd -P)"
+    script_path="$(readlink "$script_path")"
+    case "$script_path" in
+    /*) ;;
+    *) script_path="$link_directory/$script_path" ;;
     esac
 done
+script_location="$(cd "$(dirname "$script_path")/.." && pwd -P)"
+unset script_path link_directory
+source "$script_location/lib/cli.sh"
 
-clear_proxy=false
+cli_name="merge"
+cli_description="Merge one branch into another in every repository that has both"
+cli_positionals="<source_branch> <destination_branch>"
+cli_accepts_proxy=true
+parse_options "$@"
+require_args 2
 
-# Use getopts for short options
-while getopts "d:c" opt; do
-    case $opt in
-    d)
-        # echo "Flag -d or --directory was triggered, Parameter: $OPTARG"
-        target_directory="$OPTARG"
-        ;;
-    c)
-        clear_proxy=true
-        ;;
-    # \?)
-    #     echo "Invalid option: -$OPTARG"
-    #     ;;
-    esac
-done
+source "$script_location/lib/common.sh"
 
-# Shift off the options and flags, so only positional arguments remain
-shift $((OPTIND - 1))
+source_branch="${cli_positional[0]}"
+target_branch="${cli_positional[1]}"
 
-# Handle positional arguments (remaining after flags)
-arguments=("$@")
-required_number_of_arguments=2
-provided_number_of_arguments=${#arguments[@]}
-if [ "$provided_number_of_arguments" != "$required_number_of_arguments" ]; then
-    echo "$required_number_of_arguments arguments required. $provided_number_of_arguments provided"
-    exit
+if ! is_valid_branch_name "$source_branch"; then
+    echo "'$source_branch' is not a valid branch name"
+    exit 2
 fi
-
-source $script_location/lib/load-env.sh
-source $script_location/lib/target-directory.sh
-source $script_location/lib/verify-git-repo.sh
-source $script_location/lib/directory-name.sh
-source $script_location/lib/skip-directory.sh
-source $script_location/lib/terminal-color-codes.sh
-
-source_branch="${arguments[0]}"
-target_branch="${arguments[1]}"
+if ! is_valid_branch_name "$target_branch"; then
+    echo "'$target_branch' is not a valid branch name"
+    exit 2
+fi
 
 echo "Target directory: ${green}$target_directory${reset}"
 echo "Source branch: ${green}$source_branch${reset}"
 echo "Target branch: ${green}$target_branch${reset}"
 echo "Clear proxy: ${green}$clear_proxy${reset}"
 
-source $script_location/lib/clear-proxy.sh
+source "$script_location/lib/clear-proxy.sh"
 
-for child_directory in $(ls -d $target_directory/*/); do # iterate over each directory
-    if is_skipped_directory "$child_directory"; then # skip directories listed in SKIP_DIRS
-        continue
+merge_repo() {
+    local child_directory="$1" current_branch
+
+    if ! git -C "$child_directory" show-ref --verify --quiet "refs/heads/$source_branch" \
+    || ! git -C "$child_directory" show-ref --verify --quiet "refs/heads/$target_branch"; then
+        return # source_branch or target_branch does not exist locally
     fi
 
-    if [ ! -d "$child_directory/.git" ] \
-    || ! ( git -C "$child_directory" show-ref --quiet --heads $source_branch ) \
-    || ! ( git -C "$child_directory" show-ref --quiet --heads $target_branch ); then
-        # condition 1: current child_directory is not a git repo
-        # condition 2: source_branch does not exist locally
-        # condition 3: target_branch does not exist locally
-
-        continue
-    fi
-
-    child_directory_name=$(get_directory_name "$child_directory")
-    echo -e "\nWorking directory ${green}$child_directory_name${reset}" # display child_directory name
+    print_repo_header "$child_directory"
 
     current_branch=$(git -C "$child_directory" branch --show-current)
     if [ "$current_branch" != "$target_branch" ]; then  # if the current git branch is not "$target_branch"
-        git -C "$child_directory" checkout $target_branch
+        git -C "$child_directory" checkout "$target_branch" --
         current_branch=$(git -C "$child_directory" branch --show-current)
     fi
     if [ "$current_branch" != "$target_branch" ]; then  # if the current git branch is not "$target_branch"
         echo "Could not checkout to $target_branch. skipping..."
-        continue # continue to next child_directory as could not checkout to "$target_branch"
+        return # could not checkout to "$target_branch"
     fi
 
-    git -C "$child_directory" merge $source_branch
-done
+    git -C "$child_directory" merge "$source_branch"
+}
+
+for_each_repo merge_repo

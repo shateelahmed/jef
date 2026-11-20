@@ -1,16 +1,21 @@
 # jef
 
-jef helps you run a specific command in all the first level directories within a directory. This is specially helpful when you are working on a project with multiple Microservice.
+jef runs git commands across every first-level git repository in a directory. It is especially helpful when you work on a project made of multiple microservices, each in its own repository.
 
 ## Use case
 Checkout the following scenario. You have a project `amazing` that contains 10 microservices and currently you are working on features `awesome` and `cool`. `awesome` resides in 3 microservices and `cool` is in 5. The features also have 2 microservices in common. You need to constantly switch between these features for development. This is where jef comes in handy. jef can find, checkout to, pull or delete a specific git branch in multiple first level directories.
 
 ## Features
-- Find a specific Git branch
-- Checkout to a specific Git branch
-- Pull a specific Git branch
-- Delete a specific Git branch
-- List all currently checked out branches
+- Find a branch locally and on the remote (`jef find`)
+- Check out, pull, push or merge a branch everywhere it exists (`jef checkout`, `jef pull`, `jef push`, `jef merge`)
+- Delete a branch locally and optionally on the remote (`jef delete`)
+- Fetch and prune every repository (`jef fetch`)
+- List the branch each repository has checked out (`jef which`)
+- Skip directories with `SKIP_DIRS`, override the target with `-d`, and clear proxy variables with `-c`
+
+## Requirements
+- macOS or Linux (Windows is not supported yet)
+- bash (the macOS system bash 3.2 works) and git
 
 ## Installation
 - Clone the repository.
@@ -19,8 +24,14 @@ Checkout the following scenario. You have a project `amazing` that contains 10 m
     - `TARGET_DIR`: Set absolute path to the directory where you want to run jef in by default.
     - `DEFAULT_BRANCH`: Set default branch (eg. `master`, `main`) for your repository.
     - `SKIP_DIRS`: Comma and/or space separated list of directory names to skip in all commands (eg. `archived, playground`).
-- Make the `install.sh` file executable (`chmod +x <filename>.sh`).
-- Run `./install.sh` to install the scripts to `~/.jef` and add `~/.jef/commands` to your `PATH`.
+    - `.env` is read as plain `KEY=VALUE` lines (blank lines and `#` comments are ignored, one pair of surrounding quotes is removed). It is never executed as shell code. Only a leading `~` (alone or followed by `/`), `$HOME` or `${HOME}` in a value is expanded, to the value of `HOME` (eg. `TARGET_DIR=~/code`); `$OTHER_VAR`, `~user`, `$(...)` and `$HOME` in the middle of a value are kept literally.
+- Run `./install.sh`. It copies only `commands/`, `lib/` and your `.env` (if present in the clone) to `~/.jef`, and makes `jef` and `jef-*` available as commands.
+- `~/.jef/commands` is added to your `PATH` in `~/.zshrc` (zsh), `~/.bash_profile` (bash on macOS) or `~/.bashrc` (bash on Linux). For any other shell (for example fish) nothing is written: the installer prints the exact `export PATH=...` line for you to add yourself.
+- Re-running `./install.sh` is safe. If your clone has no `.env`, the installed `~/.jef/.env` is kept. If both exist, the clone's `.env` is installed and the old one is saved as `~/.jef.env.bak`.
+- Open a new terminal (or source your rc file), then run `jef help`.
+
+## Uninstalling
+Run `./uninstall.sh`. It lists what it will remove (`~/.jef` and the `export PATH=...` line containing `/.jef/commands` in your shell rc files) and asks for confirmation; use `-y`/`--yes` to skip the prompt (required when there is no terminal). Each rc file it edits is first backed up as `<file>.jef-uninstall.bak`, and your `~/.jef/.env` is saved to `~/.jef.env.bak`.
 
 ## Migrating from scrippy
 jef was previously called scrippy. If you installed scrippy before, the old install is still in `~/.scrippy` and its `PATH` line is still in your shell rc file. To switch over:
@@ -33,15 +44,50 @@ jef was previously called scrippy. If you installed scrippy before, the old inst
 Your `.env` lives in the repository clone, so no `.env` migration is needed.
 
 ## Usage
+- Run `jef help` (or `jef`, `jef -h`, `jef --help`) to list the commands, `jef help <command>` or `jef <command> --help` to see a command's options. An unknown command exits with `127`.
 - Run `jef checkout <branch_name>` to checkout to a specific branch
 - Run `jef delete <branch_name>` to delete a branch locally. Add `-r` before the `<branch_name>` to delete the branch from remote.
 - Run `jef fetch` to do a fetch. Add `-c`/`--clear-proxy` to unset proxy variables first.
 - Run `jef find <branch_name>` to find a branch in local and remote.
 - Run `jef merge <source_branch> <destination_branch>` to merge a branch into another.
-- Run `jef pull <branch_name>` to pull a branch. The pull will always happen in the same branch.
+- Run `jef pull <branch_name>` to pull a branch. The pull will always happen in the same branch. Each repository is fetched once, and repositories whose `origin` has no such branch are skipped silently.
 - Run `jef push <branch_name>` to push a branch. The push will always happen in the same branch.
 - Run `jef which` to list the branches that are currently checked out
 
+Commands and flags (all accept `-d`/`--directory <dir>` to override `TARGET_DIR` and `-h`/`--help`; options go before the arguments):
+
+| Command | Arguments | Extra flags |
+| --- | --- | --- |
+| `jef checkout` | `<branch>` | |
+| `jef delete` | `<branch>` | `-c`/`--clear-proxy`, `-r`/`--delete-remote-branch` |
+| `jef fetch` | | `-c`/`--clear-proxy` |
+| `jef find` | `<branch>` | `-c`/`--clear-proxy` |
+| `jef merge` | `<source_branch> <destination_branch>` | `-c`/`--clear-proxy` |
+| `jef pull` | `<branch>` | `-c`/`--clear-proxy` |
+| `jef push` | `<branch>` | `-c`/`--clear-proxy` |
+| `jef which` | | |
+
+Notes:
+- Every first level directory that contains a `.git` directory or file is included, so git worktrees and submodules count as repositories. Paths and directory names containing spaces work.
+- Branch names starting with `-` are rejected.
+- Output: colours are used only when stdout is a terminal and the `NO_COLOR` environment variable is unset or empty (see https://no-color.org); piped or redirected output (including `jef find` and `jef which` tables) is plain text without escape codes or spinner characters.
+- Exit codes (useful in scripts): `0` success, `1` target directory not set or not a valid directory, `2` usage error (wrong number of arguments, unknown option or invalid branch name; `--help` exits `0`), `127` unknown `jef` command. Git failures inside individual repositories do not change the exit code.
+
+
+## Development
+Checks are run by a single script:
+
+```bash
+./scripts/check.sh
+```
+
+It runs `bash -n` on every shell file, [shellcheck](https://www.shellcheck.net/) and the [bats-core](https://github.com/bats-core/bats-core) test suite in `tests/`, and exits non-zero if any of them fails. Install the prerequisites with `brew install bats-core shellcheck` (macOS) or `sudo apt-get install bats shellcheck` (Debian/Ubuntu).
+
+Things worth knowing:
+- Commands share `lib/cli.sh` (option parsing, `--help`), `lib/repos.sh` (`for_each_repo`) and `lib/common.sh` (library loading). A new command declares its name, description and flags, then calls `parse_options`; keep the dispatcher list in `commands/jef.sh` in sync (a test checks it).
+- Tests are hermetic and offline: each test builds a throwaway workspace of git repos cloned from local bare "origin" repos, and uses a temporary `HOME`. Your real repositories, `.env` and `~/.jef` are never touched (the tests run a copy of `commands/` and `lib/` with their own `.env`).
+- jef must work on macOS (bash 3.2, BSD tools) and Linux. Set `JEF_BASH` to choose the interpreter the tests run the scripts with, e.g. `JEF_BASH=/bin/bash ./scripts/check.sh` to test against the macOS system bash.
+- GitHub Actions (`.github/workflows/ci.yml`) runs `./scripts/check.sh` on Ubuntu and macOS (with `/bin/bash` 3.2) for every push and pull request.
 
 ## Example output
 <br>**jef which :**
@@ -58,7 +104,7 @@ A table is shown with directories and the branches currently checked out in each
     | cool                | master                                 |
     | amazing             | develop                                |
     | awesome             | develop                                |
-    +---------------------+----------------------------------------+```
+    +---------------------+----------------------------------------+
 
 
 <br>**jef find <branch_name> :**

@@ -1,36 +1,28 @@
 #!/bin/bash
+# shellcheck disable=SC2154,SC2034 # colour variables come from lib/terminal-color-codes.sh; cli_* are read by lib/cli.sh
 
-script_location="$(realpath "$(dirname "${BASH_SOURCE[0]}")/..")"
+# Show the currently checked out branch of each repository
 
-# Convert long options to short ones
-for arg in "$@"; do
-    shift
-    case "$arg" in
-    "--directory")
-        set -- "$@" "-d" # Convert --directory to -d
-        ;;
-    *)
-        set -- "$@" "$arg"
-        ;; # Pass through the original argument if no match
+script_path="${BASH_SOURCE[0]}"
+while [ -L "$script_path" ]; do # follow symlinks using plain readlink (portable to old macOS)
+    link_directory="$(cd "$(dirname "$script_path")" && pwd -P)"
+    script_path="$(readlink "$script_path")"
+    case "$script_path" in
+    /*) ;;
+    *) script_path="$link_directory/$script_path" ;;
     esac
 done
+script_location="$(cd "$(dirname "$script_path")/.." && pwd -P)"
+unset script_path link_directory
+source "$script_location/lib/cli.sh"
 
-# Use getopts for short options
-while getopts "d:" opt; do
-    case $opt in
-    d)
-        # echo "Flag -d or --directory was triggered, Parameter: $OPTARG"
-        target_directory="$OPTARG"
-        ;;
-    # \?)
-    #     echo "Invalid option: -$OPTARG"
-    #     ;;
-    esac
-done
+cli_name="which"
+cli_description="Show the currently checked out branch of each repository"
+cli_positionals=""
+parse_options "$@"
 
-for lib_file in "$script_location"/lib/*.sh; do
-    source "$lib_file"
-done
+source "$script_location/lib/common.sh"
+source "$script_location/lib/spinner.sh"
 
 # Define table headers
 column1="Directory"
@@ -40,8 +32,15 @@ column2="Current Branch"
 directories=()
 branches=()
 
+# Collect the directory name and current branch of one repository
+collect_branch() {
+    local child_directory="$1"
+    directories+=("$(get_directory_name "$child_directory")")
+    branches+=("$(git -C "$child_directory" branch --show-current)")
+}
 
 spin &
+# shellcheck disable=SC2034 # read by endspin in lib/spinner.sh
 SPINNER_PID=$!
 
 # Add Target Directory as the first row
@@ -49,17 +48,7 @@ directories+=("Target directory")
 branches+=("$target_directory")
 
 # Collect data for directories and branches
-for child_directory in $(ls -d $target_directory/*/); do # iterate over each directory
-    if is_skipped_directory "$child_directory"; then # skip directories listed in SKIP_DIRS
-        continue
-    fi
-
-    if ! is_git_repo "$child_directory"; then
-        continue
-    fi
-    directories+=("$(get_directory_name "$child_directory")")
-    branches+=("$(git -C "$child_directory" branch --show-current)")
-done
+for_each_repo collect_branch
 
 endspin
 

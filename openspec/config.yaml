@@ -7,7 +7,7 @@ context: |
   Commands operate only on the first-level child directories of the target directory, never recursively.
   Every command must honour SKIP_DIRS and the -d/--directory override consistently with the existing commands.
   User-facing behaviour changes (new command, flag, or env var) must also update README.md and .env.example.
-  Note: .gitignore ignores any path matching **/*test*, so new test files are not tracked unless that rule changes.
+  Tests live in tests/ (bats-core) and run with ./scripts/check.sh (bash -n, shellcheck, bats); CI runs it on Linux and macOS.
 
 rules:
   proposal:

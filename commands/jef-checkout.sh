@@ -1,84 +1,59 @@
 #!/bin/bash
+# shellcheck disable=SC2154,SC2034 # colour variables come from lib/terminal-color-codes.sh; cli_* are read by lib/cli.sh
 
-# This script checks out to a specific local branch in all directories
+# Check out a local branch in every repository that has it
 
-script_location="$(realpath "$(dirname "${BASH_SOURCE[0]}")/..")"
-
-# Convert long options to short ones
-for arg in "$@"; do
-    shift
-    case "$arg" in
-    "--directory")
-        set -- "$@" "-d" # Convert --directory to -d
-        ;;
-    *)
-        set -- "$@" "$arg"
-        ;; # Pass through the original argument if no match
+script_path="${BASH_SOURCE[0]}"
+while [ -L "$script_path" ]; do # follow symlinks using plain readlink (portable to old macOS)
+    link_directory="$(cd "$(dirname "$script_path")" && pwd -P)"
+    script_path="$(readlink "$script_path")"
+    case "$script_path" in
+    /*) ;;
+    *) script_path="$link_directory/$script_path" ;;
     esac
 done
+script_location="$(cd "$(dirname "$script_path")/.." && pwd -P)"
+unset script_path link_directory
+source "$script_location/lib/cli.sh"
 
-# Use getopts for short options
-while getopts "d:" opt; do
-    case $opt in
-    d)
-        # echo "Flag -d or --directory was triggered, Parameter: $OPTARG"
-        target_directory="$OPTARG"
-        ;;
-    # \?)
-    #     echo "Invalid option: -$OPTARG"
-    #     ;;
-    esac
-done
+cli_name="checkout"
+cli_description="Check out a local branch in every repository that has it"
+cli_positionals="<branch>"
+parse_options "$@"
+require_args 1
 
-# Shift off the options and flags, so only positional arguments remain
-shift $((OPTIND - 1))
+source "$script_location/lib/common.sh"
 
-# Handle positional arguments (remaining after flags)
-arguments=("$@")
-required_number_of_arguments=1
-provided_number_of_arguments=${#arguments[@]}
-if [ "$provided_number_of_arguments" != "$required_number_of_arguments" ]; then
-    echo "$required_number_of_arguments argument required. $provided_number_of_arguments provided"
-    exit
+branch_to_checkout="${cli_positional[0]}"
+
+if ! is_valid_branch_name "$branch_to_checkout"; then
+    echo "'$branch_to_checkout' is not a valid branch name"
+    exit 2
 fi
-
-source $script_location/lib/load-env.sh
-source $script_location/lib/target-directory.sh
-source $script_location/lib/verify-git-repo.sh
-source $script_location/lib/directory-name.sh
-source $script_location/lib/skip-directory.sh
-source $script_location/lib/terminal-color-codes.sh
-
-branch_to_checkout="${arguments[0]}"
 
 echo "Target directory: ${green}$target_directory${reset}"
 echo "Branch to checkout: ${green}$branch_to_checkout${reset}"
 
-for child_directory in $(ls -d $target_directory/*/); do # iterate over each directory
-    if is_skipped_directory "$child_directory"; then # skip directories listed in SKIP_DIRS
-        continue
+checkout_repo() {
+    local child_directory="$1" current_branch
+
+    if ! git -C "$child_directory" show-ref --verify --quiet "refs/heads/$branch_to_checkout"; then
+        return # branch_to_checkout does not exist locally
     fi
 
-    if [ ! -d "$child_directory/.git" ] \
-    || ! ( git -C "$child_directory" show-ref --quiet --heads $branch_to_checkout ); then
-        # condition 1: current child_directory is not a git repo
-        # condition 2: branch_to_checkout does not exist locally
-
-        continue
-    fi
-
-    child_directory_name=$(get_directory_name "$child_directory")
-    echo -e "\nWorking directory ${green}$child_directory_name${reset}" # display child_directory name
+    print_repo_header "$child_directory"
 
     current_branch=$(git -C "$child_directory" branch --show-current)
     if [ "$current_branch" != "$branch_to_checkout" ]; then  # if the current git branch is not "$branch_to_checkout"
-        git -C "$child_directory" checkout $branch_to_checkout
+        git -C "$child_directory" checkout "$branch_to_checkout" --
         current_branch=$(git -C "$child_directory" branch --show-current)
     fi
     if [ "$current_branch" != "$branch_to_checkout" ]; then  # if the current git branch is not "$branch_to_checkout"
         echo "Could not checkout"
-        continue
+        return
     fi
 
     echo "Checked out"
-done
+}
+
+for_each_repo checkout_repo

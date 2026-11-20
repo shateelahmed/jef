@@ -1,68 +1,38 @@
 #!/bin/bash
+# shellcheck disable=SC2154,SC2034 # colour variables come from lib/terminal-color-codes.sh; cli_* are read by lib/cli.sh
 
-# This script runs "git fetch --all --prune" is each directory residing in its parent directory (default) or in the given directory
+# Run 'git fetch --all --prune' in every repository
 
-script_location="$(realpath "$(dirname "${BASH_SOURCE[0]}")/..")"
-
-# Convert long options to short ones
-for arg in "$@"; do
-    shift
-    case "$arg" in
-    "--directory")
-        set -- "$@" "-d" # Convert --directory to -d
-        ;;
-    "--clear-proxy")
-        set -- "$@" "-c" # Convert --clear-proxy to -c
-        ;;
-    *)
-        set -- "$@" "$arg"
-        ;; # Pass through the original argument if no match
+script_path="${BASH_SOURCE[0]}"
+while [ -L "$script_path" ]; do # follow symlinks using plain readlink (portable to old macOS)
+    link_directory="$(cd "$(dirname "$script_path")" && pwd -P)"
+    script_path="$(readlink "$script_path")"
+    case "$script_path" in
+    /*) ;;
+    *) script_path="$link_directory/$script_path" ;;
     esac
 done
+script_location="$(cd "$(dirname "$script_path")/.." && pwd -P)"
+unset script_path link_directory
+source "$script_location/lib/cli.sh"
 
-clear_proxy=false
+cli_name="fetch"
+cli_description="Run 'git fetch --all --prune' in every repository"
+cli_positionals=""
+cli_accepts_proxy=true
+parse_options "$@"
 
-# Use getopts for short options
-while getopts "d:c" opt; do
-    case $opt in
-    d)
-        # echo "Flag -d or --directory was triggered, Parameter: $OPTARG"
-        target_directory="$OPTARG"
-        ;;
-    c)
-        clear_proxy=true
-        ;;
-    # \?)
-    #     echo "Invalid option: -$OPTARG"
-    #     ;;
-    esac
-done
-
-source $script_location/lib/load-env.sh
-source $script_location/lib/target-directory.sh
-source $script_location/lib/verify-git-repo.sh
-source $script_location/lib/directory-name.sh
-source $script_location/lib/skip-directory.sh
-source $script_location/lib/terminal-color-codes.sh
+source "$script_location/lib/common.sh"
 
 echo "Target directory: ${green}$target_directory${reset}"
 echo "Clear proxy: ${green}$clear_proxy${reset}"
 
-source $script_location/lib/clear-proxy.sh
+source "$script_location/lib/clear-proxy.sh"
 
-for child_directory in $(ls -d $target_directory/*/); do # iterate over each directory
-    if is_skipped_directory "$child_directory"; then # skip directories listed in SKIP_DIRS
-        continue
-    fi
-
-    if [ ! -d "$child_directory/.git" ]; then
-        # condition 1: current child_directory is not a git repo
-
-        continue
-    fi
-
-    child_directory_name=$(get_directory_name "$child_directory")
-    echo -e "\nWorking directory: ${green}$child_directory_name${reset}" # display child_directory name
-
+fetch_repo() {
+    local child_directory="$1"
+    print_repo_header "$child_directory" ":"
     git -C "$child_directory" fetch --all --prune
-done
+}
+
+for_each_repo fetch_repo

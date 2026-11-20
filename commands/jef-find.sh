@@ -1,110 +1,80 @@
 #!/bin/bash
+# shellcheck disable=SC2154,SC2034 # colour variables come from lib/terminal-color-codes.sh; cli_* are read by lib/cli.sh
 
-# Find a branch in remote and local repository
+# Show whether a branch exists locally and on the remote in each repository
 
-script_location="$(realpath "$(dirname "${BASH_SOURCE[0]}")/..")"
-
-# Convert long options to short ones
-for arg in "$@"; do
-    shift
-    case "$arg" in
-    "--directory")
-        set -- "$@" "-d" # Convert --directory to -d
-        ;;
-    "--clear-proxy")
-        set -- "$@" "-c" # Convert --clear-proxy to -c
-        ;;
-    *)
-        set -- "$@" "$arg"
-        ;; # Pass through the original argument if no match
+script_path="${BASH_SOURCE[0]}"
+while [ -L "$script_path" ]; do # follow symlinks using plain readlink (portable to old macOS)
+    link_directory="$(cd "$(dirname "$script_path")" && pwd -P)"
+    script_path="$(readlink "$script_path")"
+    case "$script_path" in
+    /*) ;;
+    *) script_path="$link_directory/$script_path" ;;
     esac
 done
+script_location="$(cd "$(dirname "$script_path")/.." && pwd -P)"
+unset script_path link_directory
+source "$script_location/lib/cli.sh"
 
-clear_proxy=false
+cli_name="find"
+cli_description="Show whether a branch exists locally and on the remote in each repository"
+cli_positionals="<branch>"
+cli_accepts_proxy=true
+parse_options "$@"
+require_args 1
 
-# Use getopts for short options
-while getopts "d:c" opt; do
-    case $opt in
-    d)
-        # echo "Flag -d or --directory was triggered, Parameter: $OPTARG"
-        target_directory="$OPTARG"
-        ;;
-    c)
-        clear_proxy=true
-        ;;
-    # \?)
-    #     echo "Invalid option: -$OPTARG"
-    #     ;;
-    esac
-done
+source "$script_location/lib/common.sh"
 
-# Shift off the options and flags, so only positional arguments remain
-shift $((OPTIND - 1))
+branch_to_find="${cli_positional[0]}"
 
-# Handle positional arguments (remaining after flags)
-arguments=("$@")
-required_number_of_arguments=1
-provided_number_of_arguments=${#arguments[@]}
-if [ "$provided_number_of_arguments" != "$required_number_of_arguments" ]; then
-    echo "$required_number_of_arguments argument required. $provided_number_of_arguments provided"
-    exit
+if ! is_valid_branch_name "$branch_to_find"; then
+    echo "'$branch_to_find' is not a valid branch name"
+    exit 2
 fi
-
-for lib_file in "$script_location"/lib/*.sh; do
-    source "$lib_file"
-done
-
-branch_to_find="${arguments[0]}"
 
 echo -e "Target directory           : ${green}$target_directory${reset}"
 echo -e "Branch to find             : ${green}$branch_to_find${reset}"
 echo -e "Clear proxy                : ${green}$clear_proxy${reset}"
+
+source "$script_location/lib/clear-proxy.sh"
+source "$script_location/lib/spinner.sh"
 
 # Initialize dynamic arrays for the table
 directories=()
 local_status=()
 remote_status=()
 
-
 function strip_color {
     echo -e "$1" | sed -E 's/\x1B\[[0-9;]*m//g'
 }
 
-spin &
-SPINNER_PID=$!
-
-
-
-# Collect data for directories, local status, and remote status
-for child_directory in $(ls -d $target_directory/*/); do
-    if is_skipped_directory "$child_directory"; then # skip directories listed in SKIP_DIRS
-        continue
-    fi
-
-    if [ ! -d "$child_directory/.git" ]; then
-        continue
-    fi
+# Collect the directory name, local status and remote status of one repository
+collect_branch_status() {
+    local child_directory="$1"
 
     # Check if the branch exists locally
-    if git -C "$child_directory" show-ref --quiet --heads $branch_to_find; then
-        # exists+="${green}  ✔ ${reset}"
+    if git -C "$child_directory" show-ref --verify --quiet "refs/heads/$branch_to_find"; then
         local_status+=("${green}  ✔  ${reset}")
     else
-        # exists+="${red}  ✘ ${reset}"
         local_status+=("${red}  ✘  ${reset}")
     fi
 
     # Check if the branch exists remotely
-    git -C "$child_directory" ls-remote --exit-code --heads origin $branch_to_find &> /dev/null
+    git -C "$child_directory" ls-remote --exit-code --heads origin "$branch_to_find" &> /dev/null
     if [ "$?" == "0" ]; then
         remote_status+=("${green}  ✔   ${reset}")
     else
         remote_status+=("${red}  ✘   ${reset}")
     fi
 
-    child_directory_name=$(get_directory_name "$child_directory")
-    directories+=("$child_directory_name")
-done
+    directories+=("$(get_directory_name "$child_directory")")
+}
+
+spin &
+# shellcheck disable=SC2034 # read by endspin in lib/spinner.sh
+SPINNER_PID=$!
+
+for_each_repo collect_branch_status
 
 # Define table headers
 header1="Directory"
@@ -124,12 +94,12 @@ col3_width=$(max_length "$header3" "${plain_remote_status[@]}")
 
 
 # Define table borders dynamically
-border_top="+$(printf -- '-%.0s' $(seq $((col1_width + 2))))+$(printf -- '-%.0s' $(seq $((col2_width))))+$(printf -- '-%.0s' $(seq $((col3_width))))+"
+border_top="+$(printf -- '-%.0s' $(seq $((col1_width + 2))))+$(printf -- '-%.0s' $(seq $((col2_width + 2))))+$(printf -- '-%.0s' $(seq $((col3_width + 2))))+"
 echo -e "\n"
 
 # Print the table header with borders
 printf "%s\n" "$border_top"
-printf "| %-*s | %-*s | %-*s |\n" "$col1_width" "$header1" "" "$header2" "" "$header3"
+printf "| %-*s | %-*s | %-*s |\n" "$col1_width" "$header1" "$col2_width" "$header2" "$col3_width" "$header3"
 printf "%s\n" "$border_top"
 
 # Print the rows dynamically

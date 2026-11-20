@@ -1,5 +1,13 @@
-# Get terminal color codes
-green=$(tput setaf 2)
-yellow=$(tput setaf 3)
-reset=$(tput sgr0)
-red=$(tput setaf 1)
+# Terminal colour codes: only when stdout is a terminal and NO_COLOR is unset or
+# empty (https://no-color.org). Empty strings otherwise, or when tput fails/is missing.
+# shellcheck disable=SC2034 # the variables are used by the sourcing commands
+green=""
+yellow=""
+red=""
+reset=""
+if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then
+    green=$(tput setaf 2 2> /dev/null) || green=""
+    yellow=$(tput setaf 3 2> /dev/null) || yellow=""
+    red=$(tput setaf 1 2> /dev/null) || red=""
+    reset=$(tput sgr0 2> /dev/null) || reset=""
+fi

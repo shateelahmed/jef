@@ -9,7 +9,7 @@
 # Returns:
 #   0 if the directory should be skipped, 1 otherwise.
 is_skipped_directory() {
-    directory_path="$1"
+    local directory_path="$1" directory_name skip_entry
     [ -z "$SKIP_DIRS" ] && return 1
 
     directory_name="$(basename "${directory_path%/*}")"

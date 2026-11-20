@@ -1,0 +1,3 @@
+# Commands source their helpers through "$script_location/lib/...", which
+# shellcheck cannot follow.
+disable=SC1090,SC1091
