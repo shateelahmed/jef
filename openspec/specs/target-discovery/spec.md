@@ -1,11 +1,12 @@
 # target-discovery Specification
 
 ## Purpose
-Shared behaviour every scrippy command uses to decide which repositories to operate on: configuration loading, target directory resolution, child-directory iteration, directory skipping, and optional proxy clearing.
+Shared behaviour every jef command uses to decide which repositories to operate on: configuration loading, target directory resolution, child-directory iteration, directory skipping, and optional proxy clearing.
 
 ## Requirements
+
 ### Requirement: Configuration from .env
-The system SHALL load environment variables from a `.env` file located in the scrippy installation root when that file exists, and SHALL continue without error when it does not.
+The system SHALL load environment variables from a `.env` file located in the jef installation root when that file exists, and SHALL continue without error when it does not.
 
 #### Scenario: .env present
 - **WHEN** a `.env` file exists in the installation root
@@ -63,5 +64,5 @@ Commands that contact a remote SHALL accept `-c`/`--clear-proxy`, and when given
 Commands that take positional arguments SHALL exit with a message stating the required and provided counts when the number of positional arguments is wrong.
 
 #### Scenario: Missing branch argument
-- **WHEN** the user runs `scrippy checkout` with no branch
+- **WHEN** the user runs `jef checkout` with no branch
 - **THEN** "1 argument required. 0 provided" is printed and nothing else runs

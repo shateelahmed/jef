@@ -1,7 +1,7 @@
 # branch-delete Specification
 
 ## Purpose
-Deleting a branch locally, and optionally on origin, across all repositories (`scrippy delete [-r] <branch>`).
+Deleting a branch locally, and optionally on origin, across all repositories (`jef delete [-r] <branch>`).
 
 ## Requirements
 ### Requirement: Delete local branch

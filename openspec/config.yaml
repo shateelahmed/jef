@@ -2,7 +2,7 @@ schema: spec-driven
 
 # Project context: constraints an agent cannot infer by reading the code.
 context: |
-  Scrippy is a set of plain Bash scripts (no build step, no package manager, no runtime other than bash + git).
+  jef is a set of plain Bash scripts (no build step, no package manager, no runtime other than bash + git).
   Must keep working on both macOS (bash 3.2 / BSD userland) and Linux (GNU userland); Windows is unsupported.
   Commands operate only on the first-level child directories of the target directory, never recursively.
   Every command must honour SKIP_DIRS and the -d/--directory override consistently with the existing commands.
@@ -11,7 +11,7 @@ context: |
 
 rules:
   proposal:
-    - State which scrippy commands are affected
+    - State which jef commands are affected
     - State what is out of scope
   tasks:
     - Include a task to update README.md when user-facing behaviour changes

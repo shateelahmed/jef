@@ -1,7 +1,7 @@
 # branch-pull Specification
 
 ## Purpose
-Pulling a branch across all repositories that have it on origin (`scrippy pull <branch>`).
+Pulling a branch across all repositories that have it on origin (`jef pull <branch>`).
 
 ## Requirements
 ### Requirement: Pull where remote branch exists

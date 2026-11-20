@@ -1,7 +1,7 @@
 # branch-push Specification
 
 ## Purpose
-Pushing a local branch to origin across all repositories (`scrippy push <branch>`).
+Pushing a local branch to origin across all repositories (`jef push <branch>`).
 
 ## Requirements
 ### Requirement: Push where local branch exists

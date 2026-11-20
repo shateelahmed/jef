@@ -1,7 +1,7 @@
 # branch-status Specification
 
 ## Purpose
-Showing which branch each repository currently has checked out (`scrippy which`).
+Showing which branch each repository currently has checked out (`jef which`).
 
 ## Requirements
 ### Requirement: Current branch table

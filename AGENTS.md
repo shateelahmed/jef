@@ -1,4 +1,4 @@
-# Scrippy — agent instructions
+# jef — agent instructions
 
 ## Model routing & verification
 
@@ -34,7 +34,7 @@ These rules apply whatever AI coding harness is used (Claude Code, Codex, Copilo
 - If the user explicitly names a model for execution or verification, use it, even if it isn't the cheapest or the rules would pick differently. You may note the cost difference once, in one line.
 - You may suggest changes that fit the scenario (a different model, splitting or batching work, more or less verification, tuning `handoff-cost` defaults, changing these rules). Suggestions are applied only with the user's approval.
 
-### Scrippy specifics
+### jef specifics
 - Objective checks before any model review: `bash -n` on every changed `.sh` file; `openspec validate --specs --strict` (and `openspec validate <change> --strict`) after spec or change edits.
 - Scripts must work on macOS (bash 3.2, BSD tools) and Linux; reviewers flag GNU-only flags.
 - Never commit, and never run `openspec archive`, unless the user explicitly asks.

@@ -1,7 +1,7 @@
 # branch-merge Specification
 
 ## Purpose
-Merging one branch into another across all repositories (`scrippy merge <source> <target>`).
+Merging one branch into another across all repositories (`jef merge <source> <target>`).
 
 ## Requirements
 ### Requirement: Merge where both branches exist

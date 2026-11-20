@@ -1,7 +1,7 @@
 # branch-find Specification
 
 ## Purpose
-Reporting where a branch exists, locally and on origin, across all repositories (`scrippy find <branch>`).
+Reporting where a branch exists, locally and on origin, across all repositories (`jef find <branch>`).
 
 ## Requirements
 ### Requirement: Existence table

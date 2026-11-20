@@ -1,7 +1,7 @@
 # branch-checkout Specification
 
 ## Purpose
-Checking out the same local branch across every repository in the target directory (`scrippy checkout <branch>`).
+Checking out the same local branch across every repository in the target directory (`jef checkout <branch>`).
 
 ## Requirements
 ### Requirement: Checkout existing local branch
