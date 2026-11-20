@@ -75,28 +75,43 @@ while IFS= read -r f; do
 done < <(find . \( -name .git -o -name .agents -o -name .claude -o -name openspec -o -name node_modules \) -prune \
     -o \( -name '*.sh' -o -name '*.bash' \) -type f -print | sort)
 
-echo "==> bash -n (${#shell_files[@]} files)"
-for f in "${shell_files[@]}"; do
-    if ! bash -n "$f"; then
-        echo "syntax error: $f"
-        failed=1
-    fi
-done
-
-echo "==> shellcheck"
-if command -v shellcheck > /dev/null 2>&1; then
-    # Only .sh files: tests/test_helper.bash is a bats helper, not a standalone script.
-    sh_files=()
+# The two static gates, run in the background alongside the bats suite.
+static_bash_n() {
+    local f rc=0
     for f in "${shell_files[@]}"; do
-        case "$f" in
-        *.sh) sh_files+=("$f") ;;
-        esac
+        if ! bash -n "$f"; then
+            echo "syntax error: $f"
+            rc=1
+        fi
     done
-    shellcheck -s bash -S warning "${sh_files[@]}" || failed=1
-else
-    echo "shellcheck not found (install: brew install shellcheck / apt-get install shellcheck)"
-    failed=1
-fi
+    return "$rc"
+}
+
+static_shellcheck() {
+    if command -v shellcheck > /dev/null 2>&1; then
+        # Only .sh files: tests/test_helper.bash is a bats helper, not a standalone script.
+        local f sh_files=()
+        for f in "${shell_files[@]}"; do
+            case "$f" in
+            *.sh) sh_files+=("$f") ;;
+            esac
+        done
+        shellcheck -s bash -S warning "${sh_files[@]}"
+    else
+        echo "shellcheck not found (install: brew install shellcheck / apt-get install shellcheck)"
+        return 1
+    fi
+}
+
+tmp="$(mktemp -d "${TMPDIR:-/tmp}/jef-check.XXXXXX")" || exit 1
+trap 'rm -rf "$tmp"' EXIT
+
+# Start both static gates in the background; their reports are printed (in the
+# same order as before) once they finish, while the bats suite is running.
+(static_bash_n > "$tmp/bashn.out" 2>&1; echo $? > "$tmp/bashn.rc") &
+pid_n=$!
+(static_shellcheck > "$tmp/shellcheck.out" 2>&1; echo $? > "$tmp/shellcheck.rc") &
+pid_s=$!
 
 # cpu_count: online CPUs (Linux, then macOS), 4 when unknown.
 cpu_count() {
@@ -113,10 +128,12 @@ cpu_count() {
 # writing <outdir>/<n>.out (TAP) and <outdir>/<n>.rc, n = position in the list.
 run_bats_dir() {
     local outdir="$1" shell="$2" i=0 f
+    # Slowest files first (most @test lines, a cheap proxy for run time) so a
+    # long file is never started last; the position n keeps the report order.
     for f in "${bats_files[@]}"; do
-        printf '%s %s\n' "$i" "$f"
+        printf '%s %s %s\n' "$(grep -c '^@test' "$f" 2> /dev/null)" "$i" "$f"
         i=$((i + 1))
-    done | JEF_BASH="$shell" xargs -P "$(cpu_count)" -L 1 sh -c \
+    done | sort -k1,1nr -k2,2n | cut -d' ' -f2,3 | JEF_BASH="$shell" xargs -P "${JEF_CHECK_JOBS:-$(cpu_count)}" -L 1 sh -c \
         'bats "$2" > "$0/$1.out" 2>&1; echo $? > "$0/$1.rc"' "$outdir"
 }
 
@@ -139,10 +156,9 @@ report_bats_dir() {
     [ "$bad" -eq 0 ] && [ "$notok" -eq 0 ]
 }
 
-echo "==> bats"
+bats_ok=0
 if command -v bats > /dev/null 2>&1; then
-    tmp="$(mktemp -d "${TMPDIR:-/tmp}/jef-check.XXXXXX")" || exit 1
-    trap 'rm -rf "$tmp"' EXIT
+    bats_ok=1
     start=$SECONDS
     if [ "$both" -eq 1 ]; then
         mkdir "$tmp/a" "$tmp/b"
@@ -152,10 +168,25 @@ if command -v bats > /dev/null 2>&1; then
         pid_b=$!
         wait "$pid_a"
         wait "$pid_b"
+    else
+        run_bats_dir "$tmp" "${JEF_BASH:-bash}"
+    fi
+fi
+
+wait "$pid_n" "$pid_s"
+echo "==> bash -n (${#shell_files[@]} files)"
+cat "$tmp/bashn.out"
+[ "$(cat "$tmp/bashn.rc")" = 0 ] || failed=1
+echo "==> shellcheck"
+cat "$tmp/shellcheck.out"
+[ "$(cat "$tmp/shellcheck.rc")" = 0 ] || failed=1
+
+echo "==> bats"
+if [ "$bats_ok" -eq 1 ]; then
+    if [ "$both" -eq 1 ]; then
         report_bats_dir "$tmp/a" "bash" || failed=1
         report_bats_dir "$tmp/b" "/bin/bash" || failed=1
     else
-        run_bats_dir "$tmp" "${JEF_BASH:-bash}"
         report_bats_dir "$tmp" "${JEF_BASH:-bash}" || failed=1
     fi
     echo "bats finished in $((SECONDS - start)) s"

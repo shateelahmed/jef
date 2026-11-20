@@ -97,12 +97,26 @@ setup_workspace() {
     # Git stores the remote as an absolute path: point each clone at this
     # test's own copy of the origins. (.env holds no path: write_env rewrites
     # it; the gitconfig and any spies are created per test.)
+    # Rewritten in pure bash: no git process per repo.
     for d in "$WS"/*/; do
-        name="$(basename "$d")"
+        name="${d%/}"
+        name="${name##*/}"
         if [ -d "$d/.git" ] && [ -d "$ORIGINS/$name.git" ]; then
-            git -C "$d" remote set-url origin "$ORIGINS/$name.git"
+            _repoint_origin "$d/.git/config" "$ORIGINS/$name.git"
         fi
     done
+}
+
+# _repoint_origin <config-file> <url>: set the url of remote "origin" (the
+# template's clones have exactly one remote, with a single "url =" line).
+_repoint_origin() {
+    local line
+    while IFS= read -r line || [ -n "$line" ]; do
+        case "$line" in
+        *"url = "*) printf '\turl = %s\n' "$2" ;;
+        *) printf '%s\n' "$line" ;;
+        esac
+    done < "$1" > "$1.new" && mv "$1.new" "$1"
 }
 
 # write_env <TARGET_DIR> <SKIP_DIRS> <DEFAULT_BRANCH>: the copy's .env.
