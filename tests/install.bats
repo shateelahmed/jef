@@ -206,27 +206,21 @@ count_path_lines() { grep -cF "$HOME/.jef/commands" "$1"; }
 }
 
 @test "uninstall: answering n aborts and changes nothing" {
-    command -v script > /dev/null 2>&1 || skip "script(1) not available to fake a terminal"
     do_install /bin/zsh
     cd "$CLONE"
-    case "$OSTYPE" in
-    darwin*) run env SHELL=/bin/sh sh -c "echo n | script -q /dev/null '$JEF_BASH' ./uninstall.sh" ;;
-    *) run env SHELL=/bin/sh sh -c "echo n | script -qec \"'$JEF_BASH' ./uninstall.sh\" /dev/null" ;;
-    esac
+    run_tty n "$JEF_BASH" ./uninstall.sh
     assert_contains "Aborted"
     [ -d "$HOME/.jef" ]
     [ "$(count_path_lines "$HOME/.zshrc")" -eq 1 ]
 }
 
 @test "uninstall: answering y removes (fake terminal)" {
-    command -v script > /dev/null 2>&1 || skip "script(1) not available to fake a terminal"
     do_install /bin/zsh
     cd "$CLONE"
-    case "$OSTYPE" in
-    darwin*) run env SHELL=/bin/sh sh -c "(sleep 1; echo y) | script -q /dev/null '$JEF_BASH' ./uninstall.sh" ;;
-    *) run env SHELL=/bin/sh sh -c "(sleep 1; echo y) | script -qec \"'$JEF_BASH' ./uninstall.sh\" /dev/null" ;;
-    esac
-    [ ! -e "$HOME/.jef" ]
+    run_tty y "$JEF_BASH" ./uninstall.sh
+    assert_status 0
+    assert_contains "Removed $HOME/.jef"
+    [ ! -e "$HOME/.jef" ] || { echo "$output"; return 1; }
 }
 
 @test "uninstall: saves .env to ~/.jef.env.bak" {

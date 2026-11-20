@@ -119,6 +119,52 @@ _repoint_origin() {
     done < "$1" > "$1.new" && mv "$1.new" "$1"
 }
 
+# run_tty <answer> <command> [args...]: run a command with stdin and stdout on a
+# fake terminal (script(1)) and type <answer> once its "[y/N]" prompt appears.
+# The input stays open until the command has exited: on slow machines, closing
+# it early (or answering before the prompt) let script end the session before
+# the command finished. Sets $status and $output like run.
+run_tty() {
+    command -v script > /dev/null 2>&1 || skip "script(1) not available to fake a terminal"
+    local arg
+    TTY_ANSWER="$1"
+    shift
+    TTY_LOG="$BATS_TEST_TMPDIR/tty.log"
+    TTY_DONE="$BATS_TEST_TMPDIR/tty.done"
+    rm -f "$TTY_LOG" "$TTY_DONE"
+    TTY_CMD=""
+    for arg in "$@"; do
+        TTY_CMD="$TTY_CMD $(printf '%q' "$arg")"
+    done
+    TTY_CMD="$TTY_CMD; rc=\$?; echo \$rc > $(printf '%q' "$TTY_DONE"); exit \$rc"
+    run _tty_session
+}
+
+# _tty_feed: wait for the prompt (up to 15 s), answer, then keep stdin open
+# until the command has finished (up to 30 s).
+_tty_feed() {
+    local i=0
+    until grep -q '\[y/N\]' "$TTY_LOG" 2> /dev/null || [ "$i" -ge 300 ]; do
+        sleep 0.05
+        i=$((i + 1))
+    done
+    printf '%s\n' "$TTY_ANSWER"
+    i=0
+    until [ -e "$TTY_DONE" ] || [ "$i" -ge 600 ]; do
+        sleep 0.05
+        i=$((i + 1))
+    done
+}
+
+# _tty_session: script(1) flushes its log (-F on macOS, -f on Linux) so
+# _tty_feed can see the prompt; SHELL=/bin/sh because Linux script runs $SHELL.
+_tty_session() {
+    case "$OSTYPE" in
+    darwin*) _tty_feed | SHELL=/bin/sh script -qF "$TTY_LOG" /bin/sh -c "$TTY_CMD" ;;
+    *) _tty_feed | SHELL=/bin/sh script -qefc "$TTY_CMD" "$TTY_LOG" ;;
+    esac
+}
+
 # write_env <TARGET_DIR> <SKIP_DIRS> <DEFAULT_BRANCH>: the copy's .env.
 write_env() {
     {

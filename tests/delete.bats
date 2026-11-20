@@ -106,17 +106,12 @@ setup() { setup_workspace; }
     assert_contains "main is the default branch in $WS/alpha/. It cannot be deleted."
 }
 
-# delete_tty <input> <args...>: run jef delete with stdin and stdout on a fake terminal
-# (script(1)) that receives <input>; same pattern as tests/install.bats.
+# delete_tty <input> <args...>: run jef delete on a fake terminal that answers
+# the confirmation prompt with <input> (see run_tty in test_helper.bash).
 delete_tty() {
-    local input="$1" cmd
+    local input="$1"
     shift
-    command -v script > /dev/null 2>&1 || skip "script(1) not available to fake a terminal"
-    cmd="'$JEF_BASH' '$JEF_HOME/commands/jef-delete.sh' $*"
-    case "$OSTYPE" in
-    darwin*) run env SHELL=/bin/sh sh -c "(sleep 1; echo '$input') | script -q /dev/null $cmd" ;;
-    *) run env SHELL=/bin/sh sh -c "(sleep 1; echo '$input') | script -qec \"$cmd\" /dev/null" ;;
-    esac
+    run_tty "$input" "$JEF_BASH" "$JEF_HOME/commands/jef-delete.sh" "$@"
 }
 
 refs_snapshot() {
