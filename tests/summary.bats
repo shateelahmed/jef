@@ -3,6 +3,8 @@
 
 load test_helper
 
+setup_file() { build_fixture_template; }
+
 setup() { setup_workspace; }
 
 # snapshot: every ref and HEAD of every workspace repo and origin, for before/after comparison.

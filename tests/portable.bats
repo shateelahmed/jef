@@ -2,6 +2,8 @@
 
 load test_helper
 
+setup_file() { build_fixture_template; }
+
 setup() { setup_workspace; }
 
 @test "no command or library uses realpath" {

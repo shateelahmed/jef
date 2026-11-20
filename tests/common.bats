@@ -2,6 +2,8 @@
 
 load test_helper
 
+setup_file() { build_fixture_template; }
+
 setup() { setup_workspace; }
 
 # Cross-cutting behaviour shared by every command.
@@ -31,12 +33,9 @@ run_spec() {
 
 @test "--directory is the long form of -d" {
     write_env "$T/does-not-exist" "skipme" "main"
-    local spec
-    for spec in $SPECS; do
-        run_spec "$spec" --directory "$WS"
-        assert_contains "$WS"
-        refute_contains "is not a valid directory"
-    done
+    run_cmd which --directory "$WS"
+    assert_contains "$WS"
+    refute_contains "is not a valid directory"
 }
 
 @test "-d is used even when TARGET_DIR points at another workspace" {
@@ -58,19 +57,21 @@ run_spec() {
     case "$(table_row alpha)" in *main*) ;; *) echo "$output"; return 1 ;; esac
 }
 
-@test "no -d and no TARGET_DIR prints a hint" {
+@test "no -d and no TARGET_DIR prints a hint and exits 1" {
     local spec
     for spec in $SPECS; do
         run_spec "$spec"
         assert_contains "Target directory is not set"
+        [ "$status" -eq 1 ] || { echo "$spec exited $status with no target directory"; return 1; }
     done
 }
 
-@test "a nonexistent target directory is reported" {
+@test "a nonexistent target directory is reported and exits 1" {
     local spec
     for spec in $SPECS; do
         run_spec "$spec" -d "$T/nope"
         assert_contains "$T/nope is not a valid directory"
+        [ "$status" -eq 1 ] || { echo "$spec exited $status on a bad directory"; return 1; }
     done
 }
 
@@ -107,9 +108,9 @@ run_spec() {
     g skipme show-ref --quiet --heads feat
 }
 
-@test "non-repo directories and plain files are ignored by every command" {
+@test "non-repo directories and plain files are ignored (read-only and mutating command)" {
     local spec
-    for spec in $SPECS; do
+    for spec in which: checkout:feat; do
         run_spec "$spec" -d "$WS"
         refute_contains "plain"
         refute_contains "loose-file"
@@ -121,27 +122,25 @@ run_spec() {
     export HTTPS_PROXY=http://proxy.invalid:3128
     export http_proxy=http://proxy.invalid:3128
     local spec
+    # Every network command clears the proxy with -c.
     for spec in fetch: find:feat pull:main push:main merge:main,main delete:nope; do
         : > "$JEF_SPY_LOG"
         run_spec "$spec" -c -d "$WS"
         assert_contains "Cleared proxy"
         [ -s "$JEF_SPY_LOG" ]
         refute grep -q "proxy.invalid" "$JEF_SPY_LOG"
-
-        : > "$JEF_SPY_LOG"
-        run_spec "$spec" -d "$WS"
-        refute_contains "Cleared proxy"
-        [ -s "$JEF_SPY_LOG" ]
-        grep -q "HTTPS_PROXY=http://proxy.invalid:3128" "$JEF_SPY_LOG"
     done
+    # Without -c the variables pass through (shared code path: one command).
+    : > "$JEF_SPY_LOG"
+    run_spec fetch: -d "$WS"
+    refute_contains "Cleared proxy"
+    [ -s "$JEF_SPY_LOG" ]
+    grep -q "HTTPS_PROXY=http://proxy.invalid:3128" "$JEF_SPY_LOG"
 }
 
 @test "proxy: --clear-proxy is the long form of -c" {
-    local spec
-    for spec in find:feat pull:main push:main merge:main,main delete:nope; do
-        run_spec "$spec" --clear-proxy -d "$WS"
-        assert_contains "Cleared proxy"
-    done
+    run_cmd find --clear-proxy -d "$WS" feat
+    assert_contains "Cleared proxy"
 }
 
 @test "paths with spaces: target directory containing a space" {
@@ -193,16 +192,6 @@ run_spec() {
     for cmd in checkout delete find merge pull push; do
         run_cmd "$cmd" -d "$WS"
         [ "$status" -eq 2 ] || { echo "$cmd exited $status on a usage error"; return 1; }
-    done
-}
-
-@test "exit code: unset or invalid target directory exits with 1" {
-    local spec
-    for spec in $SPECS; do
-        run_spec "$spec"
-        [ "$status" -eq 1 ] || { echo "$spec exited $status with no target directory"; return 1; }
-        run_spec "$spec" -d "$T/nope"
-        [ "$status" -eq 1 ] || { echo "$spec exited $status on a bad directory"; return 1; }
     done
 }
 

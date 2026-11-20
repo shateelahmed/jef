@@ -2,6 +2,8 @@
 
 load test_helper
 
+setup_file() { build_fixture_template; }
+
 setup() { setup_workspace; }
 
 @test "fetch -j 4: output equals -j 1" {
@@ -82,11 +84,13 @@ setup() { setup_workspace; }
     cat > "$T/slow/git" <<'EOF'
 #!/bin/bash
 case "$*" in
-*ls-remote*) exec sleep 37 ;;
+*ls-remote*) exec sleep "$JEF_SLEEP_MARK" ;;
 esac
 exec "$JEF_REAL_GIT" "$@"
 EOF
     chmod +x "$T/slow/git"
+    # Unique per run so concurrently running test files cannot match each other's sleeps.
+    export JEF_SLEEP_MARK="37.$$"
     export JEF_REAL_GIT
     JEF_REAL_GIT="$(command -v git)"
     export PATH="$T/slow:$PATH"
@@ -94,16 +98,16 @@ EOF
     "$JEF_BASH" "$JEF_HOME/commands/jef-find.sh" -j 2 -d "$WS" main > /dev/null 2>&1 3>&- &
     local pid=$!
     sleep 2
-    pgrep -f "sleep 37" > /dev/null # the slow lookups are in flight
+    pgrep -f "sleep $JEF_SLEEP_MARK" > /dev/null # the slow lookups are in flight
     kill -TERM "$pid"
     wait "$pid" || true
     local tries=0
-    while pgrep -f "sleep 37" > /dev/null && [ "$tries" -lt 50 ]; do
+    while pgrep -f "sleep $JEF_SLEEP_MARK" > /dev/null && [ "$tries" -lt 50 ]; do
         sleep 0.1
         tries=$((tries + 1))
     done
-    ps -o pid,ppid,command -ax | grep "sleep 37" | grep -v grep || true
-    refute pgrep -f "sleep 37"
+    ps -o pid,ppid,command -ax | grep "sleep $JEF_SLEEP_MARK" | grep -v grep || true
+    refute pgrep -f "sleep $JEF_SLEEP_MARK"
     [ -z "$(ls -A "$TMPDIR")" ]
 }
 

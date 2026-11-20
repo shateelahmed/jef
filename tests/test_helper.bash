@@ -19,15 +19,17 @@
 JEF_BASH="${JEF_BASH:-bash}"
 JEF_REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
 
-setup_workspace() {
-    T="$BATS_TEST_TMPDIR"
+# _init_env <root>: point the per-test variables and the isolated git/shell
+# environment at <root> (the test's temp dir, or the template being built).
+_init_env() {
+    T="$1"
     WS="$T/ws"
     ORIGINS="$T/origins"
     JEF_HOME="$T/jef"
 
     # Isolate git from the developer's configuration.
     export HOME="$T/home"
-    mkdir -p "$HOME" "$WS" "$ORIGINS" "$JEF_HOME"
+    mkdir -p "$HOME"
     cat > "$HOME/.gitconfig" <<'EOF'
 [user]
     name = Jef Test
@@ -45,7 +47,11 @@ EOF
     export TERM=dumb
     unset TARGET_DIR SKIP_DIRS DEFAULT_BRANCH
     unset HTTPS_PROXY https_proxy HTTP_PROXY http_proxy NO_PROXY no_proxy
+}
 
+# _populate_fixture: build the standard workspace under the current $T.
+_populate_fixture() {
+    mkdir -p "$WS" "$ORIGINS" "$JEF_HOME"
     cp -R "$JEF_REPO_ROOT/commands" "$JEF_REPO_ROOT/lib" "$JEF_HOME/"
     write_env "" "skipme" "main"
 
@@ -56,6 +62,47 @@ EOF
     mkdir "$WS/plain"
     echo "not a repo" > "$WS/plain/file.txt"
     echo "not a directory" > "$WS/loose-file.txt"
+}
+
+# build_workspace_from_scratch: the full (slow, about 1 s) workspace build in
+# $BATS_TEST_TMPDIR. For tests that need a non-standard workspace.
+build_workspace_from_scratch() {
+    _init_env "$BATS_TEST_TMPDIR"
+    _populate_fixture
+}
+
+# build_fixture_template: call from setup_file. Builds the standard workspace
+# once into $BATS_FILE_TMPDIR/template; setup_workspace copies it per test.
+# The template has no worktrees or submodules and no path baked in apart from
+# the clones' origin URLs (repointed by setup_workspace).
+build_fixture_template() {
+    local saved_home="$HOME"
+    _init_env "$BATS_FILE_TMPDIR/template"
+    _populate_fixture
+    export HOME="$saved_home"
+}
+
+# setup_workspace: a fresh, private copy of the fixture in $BATS_TEST_TMPDIR.
+# Copies the per-file template and repoints every absolute path baked into it,
+# so a test can never touch the template or another test's origins. Falls back
+# to the full build when the file did not call build_fixture_template.
+setup_workspace() {
+    local template="$BATS_FILE_TMPDIR/template" d name
+    if [ ! -d "$template/ws" ]; then
+        build_workspace_from_scratch
+        return
+    fi
+    _init_env "$BATS_TEST_TMPDIR"
+    cp -R "$template/ws" "$template/origins" "$template/jef" "$T/"
+    # Git stores the remote as an absolute path: point each clone at this
+    # test's own copy of the origins. (.env holds no path: write_env rewrites
+    # it; the gitconfig and any spies are created per test.)
+    for d in "$WS"/*/; do
+        name="$(basename "$d")"
+        if [ -d "$d/.git" ] && [ -d "$ORIGINS/$name.git" ]; then
+            git -C "$d" remote set-url origin "$ORIGINS/$name.git"
+        fi
+    done
 }
 
 # write_env <TARGET_DIR> <SKIP_DIRS> <DEFAULT_BRANCH>: the copy's .env.
@@ -79,8 +126,11 @@ setup_dispatcher() {
 # make_repo <name> [parent-dir]: bare origin + clone with one commit on main.
 make_repo() {
     local name="$1" dir="${2:-$WS}"
-    git init -q --bare -b main "$ORIGINS/$name.git"
-    git clone -q "$ORIGINS/$name.git" "$dir/$name" 2> /dev/null
+    # An empty template skips the ~14 sample hooks per repo: far fewer files to
+    # create now and to copy per test.
+    git init -q --template= --bare -b main "$ORIGINS/$name.git"
+    mkdir -p "$ORIGINS/$name.git/hooks" # tests install hooks here
+    git clone -q --template= "$ORIGINS/$name.git" "$dir/$name" 2> /dev/null
     git -C "$dir/$name" symbolic-ref HEAD refs/heads/main
     echo "$name" > "$dir/$name/file.txt"
     git -C "$dir/$name" add file.txt

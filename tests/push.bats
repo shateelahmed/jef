@@ -2,6 +2,8 @@
 
 load test_helper
 
+setup_file() { build_fixture_template; }
+
 setup() { setup_workspace; }
 
 @test "push: pushes the branch from repos that have it locally" {
@@ -35,4 +37,20 @@ setup() { setup_workspace; }
 @test "push: requires exactly one argument" {
     run_cmd push -d "$WS"
     assert_contains "1 argument required. 0 provided"
+}
+
+@test "fixture isolation: clones push to this test's own origins, never the template's" {
+    local tmpl="$BATS_FILE_TMPDIR/template" name
+    for name in alpha beta gamma skipme; do
+        [ "$(g "$name" remote get-url origin)" = "$ORIGINS/$name.git" ]
+    done
+    local before
+    before="$(git --git-dir="$tmpl/origins/alpha.git" rev-parse main)"
+    add_local_branch alpha feat
+    commit_on alpha extra.txt
+    run_cmd push -d "$WS" main
+    assert_status 0
+    [ "$(git --git-dir="$ORIGINS/alpha.git" rev-parse main)" = "$(g alpha rev-parse main)" ]
+    [ "$(git --git-dir="$tmpl/origins/alpha.git" rev-parse main)" = "$before" ]
+    refute git --git-dir="$tmpl/origins/alpha.git" show-ref --verify --quiet refs/heads/feat
 }

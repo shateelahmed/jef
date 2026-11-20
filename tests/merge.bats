@@ -2,6 +2,8 @@
 
 load test_helper
 
+setup_file() { build_fixture_template; }
+
 setup() { setup_workspace; }
 
 @test "merge: merges source into target in repos that have both branches" {

@@ -2,9 +2,69 @@
 # Run every quality gate: syntax check, shellcheck, bats tests.
 # Exits non-zero if any gate fails. Compatible with bash 3.2 (macOS).
 #
+# Usage: scripts/check.sh [--quick] [--both] [tests/file.bats ...]
+#   (no options)  full gate: bash -n, shellcheck, every bats file
+#   --quick       for the edit loop: same gates, but only the bats files given
+#                 (or, with none given, those affected by uncommitted changes:
+#                 a changed tests/X.bats or commands/jef-X.sh maps to X.bats;
+#                 any other change, or no change, runs all of them)
+#   --both        run the bats suite under both "bash" and /bin/bash (the
+#                 macOS bash 3.2) concurrently
+#
+# The bats files run concurrently (xargs -P, one bats process per file); each
+# file's output is printed in file order, followed by a total line.
 # Set JEF_BASH=/bin/bash to run the tests' scripts under a specific bash.
 
 cd "$(dirname "$0")/.." || exit 1
+
+quick=0
+both=0
+bats_files=()
+while [ $# -gt 0 ]; do
+    case "$1" in
+    --quick) quick=1 ;;
+    --both) both=1 ;;
+    -h | --help)
+        sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'
+        exit 0
+        ;;
+    -*)
+        echo "check.sh: unknown option: $1" >&2
+        exit 2
+        ;;
+    *) bats_files+=("$1") ;;
+    esac
+    shift
+done
+
+# affected_bats: bats files affected by uncommitted changes (see --quick).
+affected_bats() {
+    local path name all=0 out=""
+    while IFS= read -r path; do
+        case "$path" in
+        tests/*.bats) out="$out $path" ;;
+        commands/jef-*.sh)
+            name="${path#commands/jef-}"
+            name="tests/${name%.sh}.bats"
+            if [ -f "$name" ]; then out="$out $name"; else all=1; fi
+            ;;
+        '' | openspec/* | README.md | AGENTS.md | CLAUDE.md | .env.example) ;;
+        *) all=1 ;;
+        esac
+    done < <(git status --porcelain --untracked-files=all 2> /dev/null | sed 's/^...//')
+    [ "$all" -eq 0 ] && [ -n "$out" ] && printf '%s\n' $out | sort -u
+}
+
+if [ ${#bats_files[@]} -eq 0 ] && [ "$quick" -eq 1 ]; then
+    while IFS= read -r f; do
+        bats_files+=("$f")
+    done < <(affected_bats)
+fi
+if [ ${#bats_files[@]} -eq 0 ]; then
+    for f in tests/*.bats; do
+        bats_files+=("$f")
+    done
+fi
 
 failed=0
 
@@ -38,9 +98,67 @@ else
     failed=1
 fi
 
+# cpu_count: online CPUs (Linux, then macOS), 4 when unknown.
+cpu_count() {
+    local n
+    n="$(getconf _NPROCESSORS_ONLN 2> /dev/null)" ||
+        n="$(sysctl -n hw.ncpu 2> /dev/null)" || n=""
+    case "$n" in
+    '' | *[!0-9]* | 0) n=4 ;;
+    esac
+    echo "$n"
+}
+
+# run_bats_dir <outdir> <jef-bash>: run every file in bats_files concurrently,
+# writing <outdir>/<n>.out (TAP) and <outdir>/<n>.rc, n = position in the list.
+run_bats_dir() {
+    local outdir="$1" shell="$2" i=0 f
+    for f in "${bats_files[@]}"; do
+        printf '%s %s\n' "$i" "$f"
+        i=$((i + 1))
+    done | JEF_BASH="$shell" xargs -P "$(cpu_count)" -L 1 sh -c \
+        'bats "$2" > "$0/$1.out" 2>&1; echo $? > "$0/$1.rc"' "$outdir"
+}
+
+# report_bats_dir <outdir> <label>: print the outputs in file order and a
+# total line; returns non-zero if any file failed.
+report_bats_dir() {
+    local outdir="$1" label="$2" i=0 f rc ok=0 notok=0 n bad=0
+    for f in "${bats_files[@]}"; do
+        echo "--- $f ($label)"
+        cat "$outdir/$i.out" 2> /dev/null
+        rc="$(cat "$outdir/$i.rc" 2> /dev/null)"
+        n="$(grep -c '^ok ' "$outdir/$i.out" 2> /dev/null)"
+        ok=$((ok + n))
+        n="$(grep -c '^not ok ' "$outdir/$i.out" 2> /dev/null)"
+        notok=$((notok + n))
+        [ "${rc:-1}" = 0 ] || bad=$((bad + 1))
+        i=$((i + 1))
+    done
+    echo "bats ($label): $ok passed, $notok failed, $bad of ${#bats_files[@]} files failed"
+    [ "$bad" -eq 0 ] && [ "$notok" -eq 0 ]
+}
+
 echo "==> bats"
 if command -v bats > /dev/null 2>&1; then
-    bats tests || failed=1
+    tmp="$(mktemp -d "${TMPDIR:-/tmp}/jef-check.XXXXXX")" || exit 1
+    trap 'rm -rf "$tmp"' EXIT
+    start=$SECONDS
+    if [ "$both" -eq 1 ]; then
+        mkdir "$tmp/a" "$tmp/b"
+        run_bats_dir "$tmp/a" bash &
+        pid_a=$!
+        run_bats_dir "$tmp/b" /bin/bash &
+        pid_b=$!
+        wait "$pid_a"
+        wait "$pid_b"
+        report_bats_dir "$tmp/a" "bash" || failed=1
+        report_bats_dir "$tmp/b" "/bin/bash" || failed=1
+    else
+        run_bats_dir "$tmp" "${JEF_BASH:-bash}"
+        report_bats_dir "$tmp" "${JEF_BASH:-bash}" || failed=1
+    fi
+    echo "bats finished in $((SECONDS - start)) s"
 else
     echo "bats not found (install: brew install bats-core / apt-get install bats)"
     failed=1

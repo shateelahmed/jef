@@ -2,7 +2,7 @@
 
 load test_helper
 
-setup() { setup_workspace; }
+setup_file() { build_fixture_template; }
 
 setup() {
     setup_workspace

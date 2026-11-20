@@ -84,11 +84,13 @@ Checks are run by a single script:
 ./scripts/check.sh
 ```
 
-It runs `bash -n` on every shell file, [shellcheck](https://www.shellcheck.net/) and the [bats-core](https://github.com/bats-core/bats-core) test suite in `tests/`, and exits non-zero if any of them fails. Install the prerequisites with `brew install bats-core shellcheck` (macOS) or `sudo apt-get install bats shellcheck` (Debian/Ubuntu).
+It runs `bash -n` on every shell file, [shellcheck](https://www.shellcheck.net/) and the [bats-core](https://github.com/bats-core/bats-core) test suite in `tests/`, and exits non-zero if any of them fails. The test files run in parallel (`xargs -P`, bounded by the CPU count; no GNU parallel needed) and each file's output is printed in file order.
+
+While iterating, `./scripts/check.sh --quick tests/which.bats` runs the syntax and shellcheck gates plus only the given test files (with no files, only those affected by uncommitted changes). `./scripts/check.sh --both` runs the suite under both `bash` and `/bin/bash` (the macOS bash 3.2) concurrently. Install the prerequisites with `brew install bats-core shellcheck` (macOS) or `sudo apt-get install bats shellcheck` (Debian/Ubuntu).
 
 Things worth knowing:
 - Commands share `lib/cli.sh` (option parsing, `--help`), `lib/repos.sh` (`for_each_repo`) and `lib/common.sh` (library loading). A new command declares its name, description and flags, then calls `parse_options`; keep the dispatcher list in `commands/jef.sh` in sync (a test checks it).
-- Tests are hermetic and offline: each test builds a throwaway workspace of git repos cloned from local bare "origin" repos, and uses a temporary `HOME`. Your real repositories, `.env` and `~/.jef` are never touched (the tests run a copy of `commands/` and `lib/` with their own `.env`).
+- Tests are hermetic and offline: each test file builds a fixture workspace of git repos cloned from local bare "origin" repos once (`build_fixture_template` in `setup_file`), and each test gets its own copy of it (with its clones' origin URLs repointed at the copy's origins) and a temporary `HOME`. A test needing a non-standard workspace can call `build_workspace_from_scratch` instead. Your real repositories, `.env` and `~/.jef` are never touched (the tests run a copy of `commands/` and `lib/` with their own `.env`).
 - jef must work on macOS (bash 3.2, BSD tools) and Linux. Set `JEF_BASH` to choose the interpreter the tests run the scripts with, e.g. `JEF_BASH=/bin/bash ./scripts/check.sh` to test against the macOS system bash.
 - GitHub Actions (`.github/workflows/ci.yml`) runs `./scripts/check.sh` on Ubuntu and macOS (with `/bin/bash` 3.2) for every push and pull request.
 
