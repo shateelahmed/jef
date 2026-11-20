@@ -92,17 +92,17 @@ setup() { setup_workspace; }
 
 @test "summary: delete counts done and skipped; not-found message is kept" {
     add_local_branch alpha feat
-    run_cmd delete -d "$WS" feat
+    run_cmd delete -y -d "$WS" feat
     assert_status 0
     assert_contains "Summary: 1 done, 0 failed, 2 skipped"
-    run_cmd delete -d "$WS" nope
+    run_cmd delete -y -d "$WS" nope
     assert_status 0
     assert_contains "Branch not found in any repository"
     assert_contains "Summary: 0 done, 0 failed, 3 skipped"
 }
 
 @test "summary: delete that cannot leave the branch exits 3" {
-    run_cmd delete -d "$WS" main
+    run_cmd delete -y -d "$WS" main
     assert_status 3
     assert_contains "Summary: 0 done, 3 failed, 0 skipped"
 }
@@ -112,7 +112,7 @@ setup() { setup_workspace; }
     add_remote_branch beta feat
     printf '#!/bin/sh\nexit 1\n' > "$ORIGINS/alpha.git/hooks/pre-receive"
     chmod +x "$ORIGINS/alpha.git/hooks/pre-receive"
-    run_cmd delete -r -d "$WS" feat
+    run_cmd delete -y -r -d "$WS" feat
     assert_status 3
     assert_contains "Summary: 1 done, 1 failed, 1 skipped"
     origin_has_branch alpha feat

@@ -46,7 +46,16 @@ Your `.env` lives in the repository clone, so no `.env` migration is needed.
 ## Usage
 - Run `jef help` (or `jef`, `jef -h`, `jef --help`) to list the commands, `jef help <command>` or `jef <command> --help` to see a command's options. An unknown command exits with `127`.
 - Run `jef checkout <branch_name>` to checkout to a specific branch
-- Run `jef delete <branch_name>` to delete a branch locally. Add `-r` before the `<branch_name>` to delete the branch from remote.
+- Run `jef delete <branch_name>` to delete a branch locally. Add `-r` before the `<branch_name>` to delete the branch from remote. It first prints what will be deleted in each repository (local, remote or both) and asks for confirmation; add `-y` to skip the question (required when there is no terminal, e.g. in scripts). Example:
+
+  ```
+  Will delete branch 'feat':
+    alpha: local and remote (origin)
+    beta: local
+    gamma: remote (origin)
+
+  Delete branch 'feat' in 3 repositories? [y/N]
+  ```
 - Run `jef fetch` to do a fetch. Add `-c`/`--clear-proxy` to unset proxy variables first.
 - Run `jef find <branch_name>` to find a branch in local and remote.
 - Run `jef merge <source_branch> <destination_branch>` to merge a branch into another.
@@ -59,7 +68,7 @@ Commands and flags (all accept `-d`/`--directory <dir>` to override `TARGET_DIR`
 | Command | Arguments | Extra flags |
 | --- | --- | --- |
 | `jef checkout` | `<branch>` | |
-| `jef delete` | `<branch>` | `-c`/`--clear-proxy`, `-r`/`--delete-remote-branch`, `-n`/`--dry-run` |
+| `jef delete` | `<branch>` | `-c`/`--clear-proxy`, `-r`/`--delete-remote-branch`, `-n`/`--dry-run`, `-y`/`--yes` |
 | `jef fetch` | | `-c`/`--clear-proxy`, `-j`/`--jobs N` |
 | `jef find` | `<branch>` | `-c`/`--clear-proxy`, `-j`/`--jobs N` |
 | `jef merge` | `<source_branch> <destination_branch>` | `-c`/`--clear-proxy`, `-n`/`--dry-run` |
@@ -71,9 +80,10 @@ Notes:
 - Every first level directory that contains a `.git` directory or file is included, so git worktrees and submodules count as repositories. Paths and directory names containing spaces work.
 - Branch names starting with `-` are rejected.
 - Output: colours are used only when stdout is a terminal and the `NO_COLOR` environment variable is unset or empty (see https://no-color.org); piped or redirected output (including `jef find` and `jef which` tables) is plain text without escape codes or spinner characters.
-- Exit codes (useful in scripts): `0` success, `1` target directory not set or not a valid directory, `2` usage error (wrong number of arguments, unknown option or invalid branch name; `--help` exits `0`), `3` at least one repository failed (a git command failed or the branch could not be checked out; `checkout`, `delete`, `fetch`, `merge`, `pull` and `push` only), `127` unknown `jef` command.
+- Exit codes (useful in scripts): `0` success, `1` target directory not set or not a valid directory, or `jef delete` aborted at the confirmation prompt, `2` usage error (wrong number of arguments, unknown option or invalid branch name; `--help` exits `0`) or `jef delete` without a terminal and without `--yes`, `3` at least one repository failed (a git command failed or the branch could not be checked out; `checkout`, `delete`, `fetch`, `merge`, `pull` and `push` only), `127` unknown `jef` command.
 - Summary: `checkout`, `delete`, `fetch`, `merge`, `pull` and `push` end with `Summary: X done, Y failed, Z skipped` (skipped = the repository was visited but the operation does not apply, e.g. it lacks the branch).
 - `-n`/`--dry-run` (`delete`, `merge`, `push`) prints what would happen ("Would delete local branch X", "Would merge A into B", "Would push X to origin") without running any command that changes a repository; would-be actions count as done.
+- `-y`/`--yes` (`delete`) skips the confirmation question (the plan is still printed). Without it `jef delete` asks `Delete branch '<b>' in N repositories? [y/N]`; any answer but `y`/`yes` prints "Aborted. Nothing was deleted." and exits `1`. With no terminal on stdin it prints "Not running in a terminal. Re-run with --yes to delete. Nothing was deleted." and exits `2`. No question is asked when nothing can be deleted or with `--dry-run` (which wins over `--yes`).
 - `-j N`/`--jobs N` (`fetch`, `find`) processes up to N repositories at once (positive integer, default 1; anything else exits `2`). Output stays in the normal repository order, so it matches `-j 1`; `fetch` prints each repository's output when all are done.
 
 
