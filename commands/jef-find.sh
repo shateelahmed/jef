@@ -67,7 +67,7 @@ remote_status=()
 
 
 function strip_color {
-    echo -e "$1" | sed -r 's/\x1B\[[0-9;]*m//g'
+    echo -e "$1" | sed -E 's/\x1B\[[0-9;]*m//g'
 }
 
 spin &
@@ -113,9 +113,14 @@ header3="Remote"
 
 endspin
 
-col1_width=$((${#header1} > $(printf "%s\n" "${directories[@]}" | wc -L) ? ${#header1} : $(printf "%s\n" "${directories[@]}" | wc -L)))
-col2_width=$((${#header2} > $(printf "%s\n" "$(printf "%s\n" "${local_status[@]}" | while read line; do strip_color "$line"; done)" | wc -L) ? ${#header2} : $(printf "%s\n" "${local_status[@]}" | while read line; do strip_color "$line"; done | wc -L)))
-col3_width=$((${#header3} > $(printf "%s\n" "$(printf "%s\n" "${remote_status[@]}" | while read line; do strip_color "$line"; done)" | wc -L) ? ${#header3} : $(printf "%s\n" "${remote_status[@]}" | while read line; do strip_color "$line"; done | wc -L)))
+plain_local_status=()
+for status in "${local_status[@]}"; do plain_local_status+=("$(strip_color "$status")"); done
+plain_remote_status=()
+for status in "${remote_status[@]}"; do plain_remote_status+=("$(strip_color "$status")"); done
+
+col1_width=$(max_length "$header1" "${directories[@]}")
+col2_width=$(max_length "$header2" "${plain_local_status[@]}")
+col3_width=$(max_length "$header3" "${plain_remote_status[@]}")
 
 
 # Define table borders dynamically

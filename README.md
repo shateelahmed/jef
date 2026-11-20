@@ -35,7 +35,7 @@ Your `.env` lives in the repository clone, so no `.env` migration is needed.
 ## Usage
 - Run `jef checkout <branch_name>` to checkout to a specific branch
 - Run `jef delete <branch_name>` to delete a branch locally. Add `-r` before the `<branch_name>` to delete the branch from remote.
-- Run `jef fetch` to do a fetch.
+- Run `jef fetch` to do a fetch. Add `-c`/`--clear-proxy` to unset proxy variables first.
 - Run `jef find <branch_name>` to find a branch in local and remote.
 - Run `jef merge <source_branch> <destination_branch>` to merge a branch into another.
 - Run `jef pull <branch_name>` to pull a branch. The pull will always happen in the same branch.

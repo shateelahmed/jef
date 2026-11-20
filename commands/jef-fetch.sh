@@ -11,18 +11,26 @@ for arg in "$@"; do
     "--directory")
         set -- "$@" "-d" # Convert --directory to -d
         ;;
+    "--clear-proxy")
+        set -- "$@" "-c" # Convert --clear-proxy to -c
+        ;;
     *)
         set -- "$@" "$arg"
         ;; # Pass through the original argument if no match
     esac
 done
 
+clear_proxy=false
+
 # Use getopts for short options
-while getopts "d:" opt; do
+while getopts "d:c" opt; do
     case $opt in
     d)
         # echo "Flag -d or --directory was triggered, Parameter: $OPTARG"
         target_directory="$OPTARG"
+        ;;
+    c)
+        clear_proxy=true
         ;;
     # \?)
     #     echo "Invalid option: -$OPTARG"

@@ -64,8 +64,8 @@ done
 endspin
 
 # Determine dynamic column widths
-col1_width=$((${#column1} > $(printf "%s\n" "${directories[@]}" | wc -L) ? ${#column1} : $(printf "%s\n" "${directories[@]}" | wc -L)))
-col2_width=$((${#column2} > $(printf "%s\n" "${branches[@]}" | wc -L) ? ${#column2} : $(printf "%s\n" "${branches[@]}" | wc -L)))
+col1_width=$(max_length "$column1" "${directories[@]}")
+col2_width=$(max_length "$column2" "${branches[@]}")
 
 # Define table borders dynamically
 border_top="+$(printf -- '-%.0s' $(seq $((col1_width + 2))))+$(printf -- '-%.0s' $(seq $((col2_width + 2))))+"

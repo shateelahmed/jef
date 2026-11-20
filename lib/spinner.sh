@@ -1,4 +1,5 @@
 # Spinner function
+# Usage: spin & SPINNER_PID=$!  ...  endspin [message...]
 sp="/-\|"
 sc=0
 spin() {
@@ -10,10 +11,16 @@ spin() {
 }
 
 endspin() {
-    kill "$1" 2>/dev/null  # Stop the spinner background process
-    printf "\r\033[K"       # Clear the line (remove spinner output)
-    printf "%s\n" "$@"      # Print optional message
-    kill $!
+    if [ -n "${SPINNER_PID:-}" ]; then
+        kill "$SPINNER_PID" 2>/dev/null       # Stop the spinner background process
+        wait "$SPINNER_PID" 2>/dev/null       # Reap it so no "Terminated" notice is printed
+        SPINNER_PID=
+    fi
+    printf "\r\033[K"                      # Clear the line (remove spinner output)
+    if [ $# -gt 0 ]; then
+        printf "%s\n" "$@"                  # Print optional message
+    fi
 }
 
-trap 'endspin; exit' SIGINT SIGTERM
+trap 'endspin; exit 130' INT
+trap 'endspin; exit 143' TERM
