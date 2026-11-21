@@ -174,6 +174,12 @@ write_env() {
     } > "$JEF_HOME/.env"
 }
 
+# write_migrate_cmds <value>: add MIGRATE_CMDS to the copy's .env (the value must not
+# contain a single quote; it is stored in single quotes).
+write_migrate_cmds() {
+    printf "MIGRATE_CMDS='%s'\n" "$1" >> "$JEF_HOME/.env"
+}
+
 # setup_dispatcher: mimic install.sh (extension-less copies on PATH).
 setup_dispatcher() {
     local f

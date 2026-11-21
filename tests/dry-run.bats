@@ -81,9 +81,9 @@ snapshot() {
     refute_contains "Would push"
 }
 
-@test "dry-run: --help lists it for delete, merge, push and rebase only" {
+@test "dry-run: --help lists it for delete, merge, migrate, push and rebase only" {
     local cmd
-    for cmd in delete merge push rebase; do
+    for cmd in delete merge migrate push rebase; do
         run_cmd "$cmd" --help
         assert_contains "-n, --dry-run"
     done

@@ -111,7 +111,9 @@ EOF
     [ -z "$(ls -A "$TMPDIR")" ]
 }
 
-@test "help lists -j/--jobs for fetch and find only" {
+@test "help lists -j/--jobs for fetch, find and migrate only" {
+    run_cmd migrate --help
+    assert_contains "-j, --jobs N"
     run_cmd fetch --help
     assert_contains "-j, --jobs N"
     run_cmd find --help
