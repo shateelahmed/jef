@@ -229,6 +229,29 @@ remote_only_branch() {
     g "$1" branch -q -D "$2"
 }
 
+# branch_with_commit <repo> <branch>: a branch with one commit of its own, pushed to
+# origin and kept locally (HEAD stays where it was).
+branch_with_commit() {
+    local current
+    current=$(current_branch "$1")
+    g "$1" checkout -q -b "$2"
+    commit_on "$1" "$2.txt"
+    g "$1" push -q origin "$2" 2> /dev/null
+    g "$1" checkout -q "$current"
+}
+
+# squash_merge_on_origin <repo> <branch>: someone squash-merges origin/<branch> into
+# main on origin, so the branch is not an ancestor of main but its content is in it.
+squash_merge_on_origin() {
+    local other="$T/other-$1"
+    [ -d "$other" ] || git clone -q "$ORIGINS/$1.git" "$other" 2> /dev/null
+    git -C "$other" fetch -q origin
+    git -C "$other" checkout -q -B main origin/main
+    git -C "$other" merge -q --squash "origin/$2" > /dev/null
+    git -C "$other" commit -q -m "squash $2"
+    git -C "$other" push -q origin main 2> /dev/null
+}
+
 # origin_has_branch <repo> <branch>
 origin_has_branch() {
     git --git-dir="$ORIGINS/$1.git" show-ref --verify --quiet "refs/heads/$2"

@@ -13,6 +13,9 @@
 #                      flags that take a value (-j N, --jobs N, --jobs=N), e.g.
 #                      "j|jobs|parallel_jobs|N|1|posint|Process up to N repositories at once"
 #                      type "posint" requires a positive integer (else usage error, exit 2)
+#                      type "list" accumulates: repeating the flag appends to the value (space-joined),
+#                      e.g. "m|repo|repo_filter|REPOS||list|Only these repositories"
+#                      (the command splits the value itself; plain type is a free-form string)
 #
 # (declare "n|dry-run|dry_run|..." for commands that support --dry-run; see lib/repos.sh finish_run)
 # parse_options "$@" then sets: target_directory (only when -d is given),
@@ -142,6 +145,13 @@ parse_options() {
                             usage_error "option '--$long' needs a positive integer, got '$OPTARG'"
                         fi
                         OPTARG=$((10#$digits))
+                    fi
+                    if [ "$type" = list ]; then
+                        if [ -z "$OPTARG" ]; then
+                            OPTARG="${!var}"
+                        elif [ -n "${!var}" ]; then
+                            OPTARG="${!var} $OPTARG"
+                        fi
                     fi
                     printf -v "$var" %s "$OPTARG"
                 fi

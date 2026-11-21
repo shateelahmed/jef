@@ -29,6 +29,7 @@ parse_options "$@"
 require_args 1
 
 source "$script_location/lib/common.sh"
+source "$script_location/lib/confirm.sh"
 
 branch_to_delete="${cli_positional[0]}"
 
@@ -159,7 +160,7 @@ add_plan_line() {
 
 # Print the plan and, unless --yes, ask for confirmation. Exits 1 (declined) or 2 (no terminal).
 confirm_deletion() {
-    local line answer noun="repositories"
+    local line noun="repositories"
     echo
     if $delete_remote_branch; then
         echo "Will delete branch '$branch_to_delete':"
@@ -170,24 +171,10 @@ confirm_deletion() {
         echo -e "$line"
     done
     echo
-    if $assume_yes; then
-        return 0
-    fi
-    if [ ! -t 0 ]; then
-        echo "Not running in a terminal. Re-run with --yes to delete. Nothing was deleted."
-        exit 2
-    fi
     if [ "$plan_deletable" -eq 1 ]; then
         noun="repository"
     fi
-    printf "Delete branch '%s' in %s %s? [y/N] " "$branch_to_delete" "$plan_deletable" "$noun"
-    answer=""
-    read -r answer || true
-    case "$answer" in
-    y | Y | [Yy][Ee][Ss]) return 0 ;;
-    esac
-    echo "Aborted. Nothing was deleted."
-    exit 1
+    confirm_or_exit "Delete branch '$branch_to_delete' in $plan_deletable $noun?"
 }
 
 delete_in_repo() {

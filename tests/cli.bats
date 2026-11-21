@@ -6,7 +6,7 @@ setup_file() { build_fixture_template; }
 
 setup() { setup_workspace; }
 
-COMMANDS="checkout delete fetch find merge pull push which"
+COMMANDS="checkout delete fetch find merge merged pull push which"
 
 @test "--help: every command prints usage and exits 0, even with no target directory" {
     local cmd
@@ -28,7 +28,7 @@ COMMANDS="checkout delete fetch find merge pull push which"
 
 @test "--help lists the proxy flag only for commands that accept it" {
     local cmd
-    for cmd in fetch find merge pull push delete; do
+    for cmd in fetch find merge merged pull push delete; do
         run_cmd "$cmd" --help
         assert_contains "--clear-proxy"
     done
@@ -82,4 +82,30 @@ COMMANDS="checkout delete fetch find merge pull push which"
     assert_contains "2 arguments required. 1 provided"
     run_cmd push -d "$WS"
     assert_contains "1 argument required. 0 provided"
+}
+
+# value flags of type "list" (merged -m): repeated flags accumulate, space-joined
+
+@test "list flag: repeated -m, --repo and --repo= all accumulate" {
+    add_local_branch alpha feat
+    add_local_branch beta feat
+    add_local_branch gamma feat
+    run_cmd merged -d "$WS" -m alpha --repo beta
+    assert_contains "Repositories: alpha beta"
+    run_cmd merged -d "$WS" --repo=beta -m gamma
+    assert_contains "Repositories: beta gamma"
+    refute_contains "Working directory alpha"
+}
+
+@test "list flag: a single occurrence and an empty one" {
+    run_cmd merged -d "$WS" -m alpha -m ""
+    assert_contains "Repositories: alpha"
+    run_cmd merged -d "$WS"
+    assert_contains "Repositories: all"
+}
+
+@test "list flag: missing value is a usage error" {
+    run_cmd merged -d "$WS" -m
+    assert_status 2
+    assert_contains "requires an argument"
 }
