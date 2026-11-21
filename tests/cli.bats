@@ -6,7 +6,7 @@ setup_file() { build_fixture_template; }
 
 setup() { setup_workspace; }
 
-COMMANDS="checkout delete fetch find merge merged pull push which"
+COMMANDS="checkout delete fetch find merge merged pull push rebase which"
 
 @test "--help: every command prints usage and exits 0, even with no target directory" {
     local cmd
@@ -28,7 +28,7 @@ COMMANDS="checkout delete fetch find merge merged pull push which"
 
 @test "--help lists the proxy flag only for commands that accept it" {
     local cmd
-    for cmd in fetch find merge merged pull push delete; do
+    for cmd in fetch find merge merged pull push delete rebase; do
         run_cmd "$cmd" --help
         assert_contains "--clear-proxy"
     done

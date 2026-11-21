@@ -8,6 +8,7 @@ Checkout the following scenario. You have a project `amazing` that contains 10 m
 ## Features
 - Find a branch locally and on the remote (`jef find`)
 - Check out, pull, push or merge a branch everywhere it exists (`jef checkout`, `jef pull`, `jef push`, `jef merge`)
+- Rebase a branch onto another everywhere both exist, optionally force-pushing it (`jef rebase`)
 - Delete a branch locally and optionally on the remote (`jef delete`)
 - List (and optionally delete) local and remote branches already merged into the default branch (`jef merged`)
 - Fetch and prune every repository (`jef fetch`)
@@ -67,6 +68,7 @@ Your `.env` lives in the repository clone, so no `.env` migration is needed.
     local:  feat-a, feat-b (checked out, kept)
     remote: origin/feat-a
   ```
+- Run `jef rebase <branch> <onto_branch>` to rebase a branch onto another in every repository that has both locally (it checks out `<branch>` and runs `git rebase <onto_branch>`; nothing is fetched). The plan lists the commits to replay per repository (`alpha: 3 commits`, `beta: already up to date`) and asks for confirmation (`-y` skips it, `-n` previews). A conflict or a dirty working tree fails that repository (an in-progress rebase is aborted, nothing is left half done) and the run continues. `-p`/`--push` then force-pushes the rebased branch with `--force-with-lease` to `origin`, only where commits were rewritten.
 - Run `jef pull <branch_name>` to pull a branch. The pull will always happen in the same branch. Each repository is fetched once, and repositories whose `origin` has no such branch are skipped silently.
 - Run `jef push <branch_name>` to push a branch. The push will always happen in the same branch.
 - Run `jef which` to list the branches that are currently checked out
@@ -83,16 +85,17 @@ Commands and flags (all accept `-d`/`--directory <dir>` to override `TARGET_DIR`
 | `jef merged` | | `-c`/`--clear-proxy`, `-l`/`--local`, `-r`/`--remote`, `-m`/`--repo REPOS`, `-D`/`--delete`, `-n`/`--dry-run`, `-y`/`--yes` |
 | `jef pull` | `<branch>` | `-c`/`--clear-proxy` |
 | `jef push` | `<branch>` | `-c`/`--clear-proxy`, `-n`/`--dry-run` |
+| `jef rebase` | `<branch> <onto_branch>` | `-c`/`--clear-proxy`, `-p`/`--push`, `-n`/`--dry-run`, `-y`/`--yes` |
 | `jef which` | | |
 
 Notes:
 - Every first level directory that contains a `.git` directory or file is included, so git worktrees and submodules count as repositories. Paths and directory names containing spaces work.
 - Branch names starting with `-` are rejected.
 - Output: colours are used only when stdout is a terminal and the `NO_COLOR` environment variable is unset or empty (see https://no-color.org); piped or redirected output (including `jef find` and `jef which` tables) is plain text without escape codes or spinner characters.
-- Exit codes (useful in scripts): `0` success, `1` target directory not set or not a valid directory, or `jef delete`/`jef merged -D` aborted at the confirmation prompt, `2` usage error (wrong number of arguments, unknown option, invalid branch name or unknown `-m` repository; `--help` exits `0`) or `jef delete`/`jef merged -D` without a terminal and without `--yes`, `3` at least one repository failed (a git command failed or the branch could not be checked out; `checkout`, `delete`, `fetch`, `merge`, `merged`, `pull` and `push` only; for `merged` also a failed fetch or deletion), `127` unknown `jef` command.
-- Summary: `checkout`, `delete`, `fetch`, `merge`, `merged`, `pull` and `push` end with `Summary: X done, Y failed, Z skipped` (skipped = the repository was visited but the operation does not apply, e.g. it lacks the branch).
-- `-n`/`--dry-run` (`delete`, `merge`, `merged -D`, `push`) prints what would happen ("Would delete local branch X", "Would merge A into B", "Would push X to origin") without running any command that changes a repository; would-be actions count as done.
-- `-y`/`--yes` (`delete`, `merged -D`) skips the confirmation question (the plan is still printed). Without it `jef delete` asks `Delete branch '<b>' in N repositories? [y/N]`; any answer but `y`/`yes` prints "Aborted. Nothing was deleted." and exits `1`. With no terminal on stdin it prints "Not running in a terminal. Re-run with --yes to delete. Nothing was deleted." and exits `2`. No question is asked when nothing can be deleted or with `--dry-run` (which wins over `--yes`). `jef merged -D` asks `Delete N branches in M repositories? [y/N]` with the same answers and exit codes.
+- Exit codes (useful in scripts): `0` success, `1` target directory not set or not a valid directory, or `jef delete`/`jef merged -D`/`jef rebase` aborted at the confirmation prompt, `2` usage error (wrong number of arguments, unknown option, invalid branch name or unknown `-m` repository; `--help` exits `0`) or `jef delete`/`jef merged -D`/`jef rebase` without a terminal and without `--yes`, `3` at least one repository failed (a git command failed or the branch could not be checked out; `checkout`, `delete`, `fetch`, `merge`, `merged`, `pull`, `push` and `rebase` only; for `merged` also a failed fetch or deletion, for `rebase` also a failed rebase or push), `127` unknown `jef` command.
+- Summary: `checkout`, `delete`, `fetch`, `merge`, `merged`, `pull`, `push` and `rebase` end with `Summary: X done, Y failed, Z skipped` (skipped = the repository was visited but the operation does not apply, e.g. it lacks the branch).
+- `-n`/`--dry-run` (`delete`, `merge`, `merged -D`, `push`, `rebase`) prints what would happen ("Would delete local branch X", "Would merge A into B", "Would push X to origin", "Would rebase A onto B (N commits)") without running any command that changes a repository; would-be actions count as done.
+- `-y`/`--yes` (`delete`, `merged -D`, `rebase`) skips the confirmation question (the plan is still printed). Without it `jef delete` asks `Delete branch '<b>' in N repositories? [y/N]`; any answer but `y`/`yes` prints "Aborted. Nothing was deleted." and exits `1`. With no terminal on stdin it prints "Not running in a terminal. Re-run with --yes to delete. Nothing was deleted." and exits `2`. No question is asked when nothing can be deleted or with `--dry-run` (which wins over `--yes`). `jef merged -D` asks `Delete N branches in M repositories? [y/N]` with the same answers and exit codes. `jef rebase` asks `Rebase '<b>' onto '<o>' in N repositories? [y/N]` and words its messages "Nothing was rebased." / "Re-run with --yes to rebase.".
 - `-j N`/`--jobs N` (`fetch`, `find`) processes up to N repositories at once (positive integer, default 1; anything else exits `2`). Output stays in the normal repository order, so it matches `-j 1`; `fetch` prints each repository's output when all are done.
 
 
