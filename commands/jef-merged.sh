@@ -26,6 +26,7 @@ cli_extra_flags=(
     "D|delete|delete_branches|Delete the merged branches after confirmation"
     "n|dry-run|dry_run|With --delete: show what would be deleted without changing anything"
     "y|yes|assume_yes|With --delete: delete without asking for confirmation"
+    "|include-empty|include_empty|With --delete: also delete branches that have no commits of their own"
 )
 cli_value_flags=(
     "m|repo|repo_filter|REPOS||list|Only these repositories (comma or space separated, repeatable)"
@@ -43,6 +44,25 @@ if $only_local && ! $only_remote; then
     want_remote=false
 elif $only_remote && ! $only_local; then
     want_local=false
+fi
+
+# Protected branches: PROTECTED_BRANCHES (comma or space separated names or glob patterns) are never
+# listed or deleted; the default branch and origin's HEAD branch always are protected.
+set -f # the patterns are split on spaces below and must not be matched against files
+protected_patterns=()
+for protected_pattern in ${PROTECTED_BRANCHES//,/ }; do
+    protected_patterns+=("$protected_pattern")
+done
+set +f
+protected_text="default branch only"
+if [ "${#protected_patterns[@]}" -gt 0 ]; then
+    protected_text="${protected_patterns[*]}"
+fi
+
+# --include-empty only matters when deleting
+empties_deleted=false
+if $delete_branches && $include_empty; then
+    empties_deleted=true
 fi
 
 # Repositories to examine: all of them, or the ones named with -m (in the usual order)
@@ -89,6 +109,7 @@ echo "Branches: ${green}$scope_text${reset}"
 echo "Repositories: ${green}${repo_filter:-all}${reset}"
 echo "Delete: ${green}$delete_branches${reset}"
 echo "Dry run: ${green}$dry_run${reset}"
+echo "Protected: ${green}$protected_text${reset}"
 
 source "$script_location/lib/clear-proxy.sh"
 
@@ -102,10 +123,13 @@ else
 fi
 
 # Succeeds when the ref $1 is already in the base ref $merge_base_ref: it is an ancestor of it,
-# or merging it would change nothing (what a squash or rebase merge leaves behind).
+# or merging it would change nothing (what a squash or rebase merge leaves behind). Sets
+# merged_by_ancestor to true or false (only meaningful when it succeeds).
 is_merged() {
     local merge_result
+    merged_by_ancestor=false
     if git -C "$scan_directory" merge-base --is-ancestor "$1" "$merge_base_ref" 2> /dev/null; then
+        merged_by_ancestor=true
         return 0
     fi
     $merge_tree_supported || return 1
@@ -113,32 +137,95 @@ is_merged() {
     [ "${merge_result%%$'\n'*}" == "$merge_base_tree" ]
 }
 
+# Succeeds when the branch name $1 matches one of the PROTECTED_BRANCHES patterns.
+is_protected() {
+    local pattern
+    [ "${#protected_patterns[@]}" -gt 0 ] || return 1
+    for pattern in "${protected_patterns[@]}"; do
+        # shellcheck disable=SC2254 # the pattern is meant to be a glob
+        case "$1" in $pattern) return 0 ;; esac
+    done
+    return 1
+}
+
+# Temp file holding the first-parent history of the base ref (one sha per line), made on first
+# use per repository. A branch whose tip is in it has no commits of its own. Removed after each
+# scan and by the EXIT trap (merged does not use parallel_run, so the trap is not taken).
+first_parent_file=""
+cleanup_first_parent_file() {
+    if [ -n "$first_parent_file" ]; then
+        rm -f "$first_parent_file"
+        first_parent_file=""
+    fi
+}
+trap cleanup_first_parent_file EXIT
+
+# Succeeds when the commit $1 is on the first-parent history of the base ref.
+is_empty_tip() {
+    if [ -z "$first_parent_file" ]; then
+        first_parent_file=$(mktemp "${TMPDIR:-/tmp}/jef.XXXXXX") || exit 1
+        git -C "$scan_directory" rev-list --first-parent "$merge_base_ref" > "$first_parent_file" 2> /dev/null
+    fi
+    grep -qxF -- "$1" "$first_parent_file"
+}
+
 # Scan results per repository, kept in parallel indexed arrays (bash 3.2 has no associative
 # arrays) keyed by the repository's position in repo_list, so each repository is scanned once.
-# Branch names cannot contain spaces, so the lists are space-separated.
+# Branch names cannot contain spaces, so the lists are space-separated; the "padded" lists
+# start and end with a space so that " name " can be searched for.
 #   scan_state         ok, or nobase (neither origin/DEFAULT_BRANCH nor DEFAULT_BRANCH exists)
 #   scan_fetch_failed  "y" when git fetch failed (remote branches are then not examined)
-#   scan_local         merged local branches (including the checked-out one)
-#   scan_del_local     merged local branches that can be deleted (the checked-out one excluded)
+#   scan_local         merged local branches that are not protected (including kept ones)
+#   scan_local_shas    their commits at scan time, in the same order
+#   scan_del_local     the ones that can be deleted (not checked out in a worktree, and not
+#                      empty unless --include-empty)
 #   scan_remote        merged branches on origin (names without the "origin/" prefix)
-#   scan_current       the checked-out branch
+#   scan_remote_shas   their commits at scan time, in the same order
+#   scan_del_remote    the ones that can be deleted (empty ones only with --include-empty)
+#   scan_busy          padded: local branches checked out in any worktree
+#   scan_kept_empty_local / scan_kept_empty_remote  padded: no-commit branches that are kept
 scan_state=()
 scan_fetch_failed=()
 scan_local=()
+scan_local_shas=()
 scan_del_local=()
 scan_remote=()
-scan_current=()
+scan_remote_shas=()
+scan_del_remote=()
+scan_busy=()
+scan_kept_empty_local=()
+scan_kept_empty_remote=()
+
+# lookup_sha <names> <shas> <name>: the sha stored at the position of <name> in the lists.
+lookup_sha() {
+    local names shas i
+    read -ra names <<< "$1"
+    read -ra shas <<< "$2"
+    for ((i = 0; i < ${#names[@]}; i++)); do
+        if [ "${names[$i]}" == "$3" ]; then
+            echo "${shas[$i]}"
+            return 0
+        fi
+    done
+    return 1
+}
 
 scan_repo() { # scan_repo <index>: fetch, then find the merged branches of repo_list[index]
-    local index="$1" ref name origin_head refs
-    local locals="" del_locals="" remotes=""
+    local index="$1" ref name sha origin_head refs line busy=" "
+    local locals="" local_shas="" del_locals="" remotes="" remote_shas="" del_remotes=""
+    local kept_empty_local=" " kept_empty_remote=" " tip_empty
     scan_directory="${repo_list[$index]}"
     scan_state[index]="ok"
     scan_fetch_failed[index]=""
     scan_local[index]=""
+    scan_local_shas[index]=""
     scan_del_local[index]=""
     scan_remote[index]=""
-    scan_current[index]=$(git -C "$scan_directory" branch --show-current)
+    scan_remote_shas[index]=""
+    scan_del_remote[index]=""
+    scan_busy[index]=" "
+    scan_kept_empty_local[index]=" "
+    scan_kept_empty_remote[index]=" "
 
     if ! git -C "$scan_directory" fetch --prune origin &> /dev/null; then
         scan_fetch_failed[index]="y"
@@ -159,15 +246,30 @@ scan_repo() { # scan_repo <index>: fetch, then find the merged branches of repo_
     origin_head="${origin_head#origin/}"
 
     if $want_local; then
-        refs=$(git -C "$scan_directory" for-each-ref --format='%(refname)' refs/heads)
-        while IFS= read -r ref; do
+        # branches checked out in any worktree (the main one included) are never deleted
+        while IFS= read -r line; do
+            case "$line" in
+            "branch refs/heads/"*) busy+="${line#branch refs/heads/} " ;;
+            esac
+        done <<< "$(git -C "$scan_directory" worktree list --porcelain 2> /dev/null)"
+        refs=$(git -C "$scan_directory" for-each-ref --format='%(objectname) %(refname)' refs/heads)
+        while read -r sha ref; do
             name="${ref#refs/heads/}"
-            if [ -z "$name" ] || [ "$name" == "${DEFAULT_BRANCH}" ] || [ "$name" == "$origin_head" ]; then
+            if [ -z "$name" ] || [ "$name" == "${DEFAULT_BRANCH}" ] || [ "$name" == "$origin_head" ] || is_protected "$name"; then
                 continue
             fi
             if is_merged "$ref"; then
                 locals+="$name "
-                if [ "$name" != "${scan_current[$index]}" ]; then
+                local_shas+="$sha "
+                tip_empty=false
+                if $merged_by_ancestor && is_empty_tip "$sha"; then
+                    tip_empty=true
+                fi
+                if [[ "$busy" == *" $name "* ]]; then
+                    : # checked out somewhere: kept
+                elif $tip_empty && ! $empties_deleted; then
+                    kept_empty_local+="$name "
+                else
                     del_locals+="$name "
                 fi
             fi
@@ -175,27 +277,83 @@ scan_repo() { # scan_repo <index>: fetch, then find the merged branches of repo_
     fi
 
     if $want_remote && [ -z "${scan_fetch_failed[$index]}" ]; then
-        refs=$(git -C "$scan_directory" for-each-ref --format='%(refname)' refs/remotes/origin)
-        while IFS= read -r ref; do
+        refs=$(git -C "$scan_directory" for-each-ref --format='%(objectname) %(refname)' refs/remotes/origin)
+        while read -r sha ref; do
             name="${ref#refs/remotes/origin/}"
-            if [ -z "$name" ] || [ "$name" == "HEAD" ] || [ "$name" == "${DEFAULT_BRANCH}" ] || [ "$name" == "$origin_head" ]; then
+            if [ -z "$name" ] || [ "$name" == "HEAD" ] || [ "$name" == "${DEFAULT_BRANCH}" ] || [ "$name" == "$origin_head" ] || is_protected "$name"; then
                 continue
             fi
             if is_merged "$ref"; then
                 remotes+="$name "
+                remote_shas+="$sha "
+                tip_empty=false
+                if $merged_by_ancestor && is_empty_tip "$sha"; then
+                    tip_empty=true
+                fi
+                if $tip_empty && ! $empties_deleted; then
+                    kept_empty_remote+="$name "
+                else
+                    del_remotes+="$name "
+                fi
             fi
         done <<< "$refs"
     fi
+    cleanup_first_parent_file
 
     scan_local[index]="${locals% }"
+    scan_local_shas[index]="${local_shas% }"
     scan_del_local[index]="${del_locals% }"
     scan_remote[index]="${remotes% }"
+    scan_remote_shas[index]="${remote_shas% }"
+    scan_del_remote[index]="${del_remotes% }"
+    scan_busy[index]="$busy"
+    scan_kept_empty_local[index]="$kept_empty_local"
+    scan_kept_empty_remote[index]="$kept_empty_remote"
+}
+
+# Results of the last delete_repo, padded lists of branch names (used by print_merged_tree):
+#   res_failed_*   could not be deleted (red)
+#   res_changed_*  moved since the scan, so the compare-and-delete kept them (yellow)
+# res_push_output is git push's output when a remote deletion failed.
+res_failed_local=" "
+res_changed_local=" "
+res_failed_remote=" "
+res_changed_remote=" "
+res_push_output=""
+
+# The coloured note after a branch: branch_note <index> <local|remote> <name> [result]
+branch_note() {
+    local index="$1" kind="$2" name="$3" failed changed
+    if [ -n "${4:-}" ]; then
+        if [ "$kind" == "local" ]; then
+            failed="$res_failed_local"
+            changed="$res_changed_local"
+        else
+            failed="$res_failed_remote"
+            changed="$res_changed_remote"
+        fi
+        if [[ "$failed" == *" $name "* ]]; then
+            echo " ${red}(could not delete)${reset}"
+            return 0
+        elif [[ "$changed" == *" $name "* ]]; then
+            echo " ${yellow}(changed since scan, kept)${reset}"
+            return 0
+        fi
+    fi
+    if [ "$kind" == "local" ] && [[ "${scan_busy[$index]}" == *" $name "* ]]; then
+        echo " ${yellow}(checked out, kept)${reset}"
+    elif [ "$kind" == "local" ] && [[ "${scan_kept_empty_local[$index]}" == *" $name "* ]]; then
+        echo " ${yellow}(no commits, kept)${reset}"
+    elif [ "$kind" == "remote" ] && [[ "${scan_kept_empty_remote[$index]}" == *" $name "* ]]; then
+        echo " ${yellow}(no commits, kept)${reset}"
+    fi
 }
 
 # Print repository <index> as a bulleted block indented by <indent>: its name, then a "local" and a
 # "remote" group (each only when it has branches) with one "- branch" line per branch. With a third
-# argument (any value) the repository's problems are printed under its name.
-print_merged_tree() { # print_merged_tree <indent> <index> [problems]
+# argument (any value) the repository's problems are printed under its name; with a fourth the
+# outcome of the deletion (res_* lists) is shown as well.
+print_merged_tree() { # print_merged_tree <indent> <index> [problems] [result]
     local indent="$1" index="$2" name
     echo "${indent}${green}$(get_directory_name "${repo_list[$index]}")${reset}"
     if [ -n "${3:-}" ]; then
@@ -204,24 +362,30 @@ print_merged_tree() { # print_merged_tree <indent> <index> [problems]
     if [ -n "${scan_local[$index]}" ]; then
         echo "${indent}  ${magenta}local${reset}"
         for name in ${scan_local[$index]}; do
-            if [ "$name" == "${scan_current[$index]}" ]; then
-                echo "${indent}    - ${cyan}$name${reset} ${yellow}(checked out, kept)${reset}"
-            else
-                echo "${indent}    - ${cyan}$name${reset}"
-            fi
+            echo "${indent}    - ${cyan}$name${reset}$(branch_note "$index" local "$name" "${4:-}")"
         done
     fi
     if [ -n "${scan_remote[$index]}" ]; then
         echo "${indent}  ${magenta}remote${reset}"
         for name in ${scan_remote[$index]}; do
-            echo "${indent}    - ${cyan}origin/$name${reset}"
+            echo "${indent}    - ${cyan}origin/$name${reset}$(branch_note "$index" remote "$name" "${4:-}")"
         done
+        if [ -n "${4:-}" ] && [ -n "$res_push_output" ]; then
+            while IFS= read -r name; do
+                echo "${indent}      $name"
+            done <<< "$res_push_output"
+        fi
     fi
 }
 
 # True when repository <index> has merged branches (listed, even if not deletable).
 has_merged() {
     [ -n "${scan_local[$1]}${scan_remote[$1]}" ]
+}
+
+# True when repository <index> has branches that would be deleted.
+has_deletable() {
+    [ -n "${scan_del_local[$1]}${scan_del_remote[$1]}" ]
 }
 
 # True when repository <index> has a problem to report (no base branch, failed fetch).
@@ -278,19 +442,28 @@ dry_run_repo() { # dry_run_repo <index> <is first block: y or "">
     fi
     if [ -n "${scan_fetch_failed[$index]}" ]; then
         mark_repo_failed
-    elif [ -n "${scan_del_local[$index]}${scan_remote[$index]}" ]; then
+    elif has_deletable "$index"; then
         mark_repo_done
     else
         mark_repo_skipped
     fi
 }
 
-# Deletion for repository <index>, from the cached scan. Prints the repository as a bulleted
-# block like the listing: deleted branches plainly, the checked-out branch marked kept and
-# branches that could not be deleted marked in red.
+# Deletion for repository <index>, from the cached scan, as a compare-and-delete: every branch is
+# only removed if it still points at the commit recorded by the scan. Local branches use
+# git update-ref -d <ref> <sha>; the remote ones go in one git push with a --force-with-lease per
+# branch, then git ls-remote tells which are really gone. A branch that moved since the scan is
+# kept and reported as such; one that could not be deleted is marked in red. Prints the repository
+# as a bulleted block like the listing.
 delete_repo() { # delete_repo <index> <is first block: y or "">
-    local index="$1" name repo_failed="" deleted="" push_output="" remote_refs
-    local directory="${repo_list[$index]}" failed_local=" " remote_failed=""
+    local index="$1" name sha current remote_now lsha lref
+    local repo_failed="" deleted="" push_status=0 ls_status=0
+    local directory="${repo_list[$index]}" remote_state="" push_args remote_refs
+    res_failed_local=" "
+    res_changed_local=" "
+    res_failed_remote=" "
+    res_changed_remote=" "
+    res_push_output=""
     if ! has_merged "$index" && ! has_problem "$index"; then
         mark_repo_skipped
         return 0
@@ -303,58 +476,69 @@ delete_repo() { # delete_repo <index> <is first block: y or "">
     fi
 
     for name in ${scan_del_local[$index]}; do
-        if git -C "$directory" branch -D -- "$name" &> /dev/null; then
+        sha=$(lookup_sha "${scan_local[$index]}" "${scan_local_shas[$index]}" "$name")
+        if git -C "$directory" update-ref -d "refs/heads/$name" "$sha" &> /dev/null; then
+            git -C "$directory" config --remove-section "branch.$name" &> /dev/null || true # what git branch -D also removes
             deleted="y"
         else
-            failed_local+="$name "
-            repo_failed="y"
+            current=$(git -C "$directory" rev-parse --verify --quiet "refs/heads/$name" 2> /dev/null)
+            if [ -z "$current" ]; then
+                deleted="y" # already gone
+            elif [ "$current" != "$sha" ]; then
+                res_changed_local+="$name "
+            else
+                res_failed_local+="$name "
+                repo_failed="y"
+            fi
         fi
     done
-    if [ -n "${scan_remote[$index]}" ]; then
+
+    if [ -n "${scan_del_remote[$index]}" ]; then
+        push_args=()
         remote_refs=()
-        for name in ${scan_remote[$index]}; do
+        for name in ${scan_del_remote[$index]}; do
+            sha=$(lookup_sha "${scan_remote[$index]}" "${scan_remote_shas[$index]}" "$name")
+            push_args+=("--force-with-lease=refs/heads/$name:$sha")
             remote_refs+=("refs/heads/$name")
         done
-        if push_output=$(git -C "$directory" push origin --delete "${remote_refs[@]}" 2>&1); then
-            deleted="y"
-        else
-            remote_failed="y"
-            repo_failed="y"
+        res_push_output=$(git -C "$directory" push origin --delete "${push_args[@]}" "${remote_refs[@]}" 2>&1) || push_status=$?
+        # a push can reject some branches and accept others: ask origin which are gone
+        remote_state=$(git -C "$directory" ls-remote origin "${remote_refs[@]}" 2> /dev/null) || ls_status=$?
+        for name in ${scan_del_remote[$index]}; do
+            sha=$(lookup_sha "${scan_remote[$index]}" "${scan_remote_shas[$index]}" "$name")
+            if [ "$ls_status" -ne 0 ]; then
+                if [ "$push_status" -eq 0 ]; then
+                    deleted="y"
+                else
+                    res_failed_remote+="$name "
+                    repo_failed="y"
+                fi
+                continue
+            fi
+            remote_now=""
+            while read -r lsha lref; do
+                if [ "$lref" == "refs/heads/$name" ]; then
+                    remote_now="$lsha"
+                fi
+            done <<< "$remote_state"
+            if [ -z "$remote_now" ]; then
+                deleted="y"
+            elif [ "$remote_now" != "$sha" ]; then
+                res_changed_remote+="$name "
+            else
+                res_failed_remote+="$name "
+                repo_failed="y"
+            fi
+        done
+        if [ "$res_failed_remote" == " " ]; then
+            res_push_output="" # nothing failed: the push output (lease rejections) is just noise
         fi
     fi
 
     if [ -z "$2" ]; then
         echo
     fi
-    echo "  ${green}$(get_directory_name "$directory")${reset}"
-    print_repo_problems "$index" "    "
-    if [ -n "${scan_local[$index]}" ]; then
-        echo "    ${magenta}local${reset}"
-        for name in ${scan_local[$index]}; do
-            if [ "$name" == "${scan_current[$index]}" ]; then
-                echo "      - ${cyan}$name${reset} ${yellow}(checked out, kept)${reset}"
-            elif [[ "$failed_local" == *" $name "* ]]; then
-                echo "      - ${cyan}$name${reset} ${red}(could not delete)${reset}"
-            else
-                echo "      - ${cyan}$name${reset}"
-            fi
-        done
-    fi
-    if [ -n "${scan_remote[$index]}" ]; then
-        echo "    ${magenta}remote${reset}"
-        for name in ${scan_remote[$index]}; do
-            if [ -n "$remote_failed" ]; then
-                echo "      - ${cyan}origin/$name${reset} ${red}(could not delete)${reset}"
-            else
-                echo "      - ${cyan}origin/$name${reset}"
-            fi
-        done
-        if [ -n "$remote_failed" ]; then
-            while IFS= read -r name; do
-                echo "        $name"
-            done <<< "$push_output"
-        fi
-    fi
+    print_merged_tree "  " "$index" problems result
 
     if [ -n "$repo_failed" ]; then
         mark_repo_failed
@@ -375,7 +559,7 @@ delete_repo_count=0
 for ((i = 0; i < ${#repo_list[@]}; i++)); do
     scan_repo "$i"
     repo_deletable=0
-    for branch in ${scan_del_local[$i]} ${scan_remote[$i]}; do
+    for branch in ${scan_del_local[$i]} ${scan_del_remote[$i]}; do
         repo_deletable=$((repo_deletable + 1))
     done
     delete_branch_count=$((delete_branch_count + repo_deletable))
@@ -406,7 +590,7 @@ else
         echo "Will delete these merged branches:"
         plan_blocks=0
         for ((i = 0; i < ${#repo_list[@]}; i++)); do
-            if [ -n "${scan_del_local[$i]}${scan_remote[$i]}" ]; then
+            if has_deletable "$i"; then
                 if [ "$plan_blocks" -gt 0 ]; then
                     echo
                 fi

@@ -109,3 +109,25 @@ COMMANDS="checkout delete fetch find merge merged migrate pull push rebase which
     assert_status 2
     assert_contains "requires an argument"
 }
+
+# long-only boolean flags (empty short letter): merged --include-empty
+
+@test "long-only flag: is accepted, listed in --help without a short letter, and has no short form" {
+    run_cmd merged --include-empty -d "$WS"
+    assert_status 0
+    run_cmd merged --help
+    assert_contains "    --include-empty"
+    refute_contains "-i, --include-empty"
+    run_cmd merged -i -d "$WS"
+    assert_status 2
+    assert_contains "unknown option '-i'"
+}
+
+@test "long-only flag: sets its variable and combines with other flags" {
+    g alpha branch empty
+    run_cmd merged -D -n -d "$WS"
+    assert_contains "empty (no commits, kept)"
+    run_cmd merged -D -n --include-empty -y -d "$WS"
+    assert_status 0
+    refute_contains "no commits"
+}

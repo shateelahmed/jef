@@ -8,6 +8,7 @@
 #   cli_accepts_proxy  "true" if the command takes -c/--clear-proxy (default: false)
 #   cli_extra_flags    optional array of "short|long|variable|description" entries,
 #                      e.g. "r|delete-remote-branch|delete_remote_branch|Also delete the remote branch"
+#                      (leave the short letter empty for a long-only flag: "|include-empty|include_empty|...")
 #
 #   cli_value_flags    optional array of "short|long|variable|METAVAR|default|type|description" entries for
 #                      flags that take a value (-j N, --jobs N, --jobs=N), e.g.
@@ -35,7 +36,11 @@ print_usage() {
     fi
     for flag in "${cli_extra_flags[@]}"; do
         IFS='|' read -r short long var desc <<< "$flag"
-        printf "  %-28s %s\n" "-$short, --$long" "$desc"
+        if [ -z "$short" ]; then
+            printf "  %-28s %s\n" "    --$long" "$desc"
+        else
+            printf "  %-28s %s\n" "-$short, --$long" "$desc"
+        fi
     done
     for flag in "${cli_value_flags[@]}"; do
         IFS='|' read -r short long var meta default type desc <<< "$flag"
@@ -66,7 +71,7 @@ parse_options() {
     fi
     for flag in "${cli_extra_flags[@]}"; do
         IFS='|' read -r short long var desc <<< "$flag"
-        optstring+="$short"
+        optstring+="$short" # empty for a long-only flag
         printf -v "$var" %s false
     done
     for flag in "${cli_value_flags[@]}"; do
@@ -96,7 +101,14 @@ parse_options() {
             bad=""
             for flag in "${cli_extra_flags[@]}"; do
                 IFS='|' read -r short long var desc <<< "$flag"
-                if [ "$arg" = "--$long" ]; then bad="$short"; fi
+                if [ "$arg" = "--$long" ]; then
+                    if [ -z "$short" ]; then # long-only flag: set it here, getopts never sees it
+                        printf -v "$var" %s true
+                        bad="="
+                    else
+                        bad="$short"
+                    fi
+                fi
             done
             for flag in "${cli_value_flags[@]}"; do
                 IFS='|' read -r short long var meta default type desc <<< "$flag"

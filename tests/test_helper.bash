@@ -235,6 +235,29 @@ remote_only_branch() {
     g "$1" branch -q -D "$2"
 }
 
+# merged_local_branch <repo> <branch>: a local branch with a commit of its own that is merged
+# into main with a merge commit (so it is not "empty": its tip is off main's first-parent
+# history), main is pushed. Needs main checked out; the branch is not pushed.
+merged_local_branch() {
+    g "$1" checkout -q -b "$2"
+    commit_on "$1" "$(printf %s "$2" | tr / _).txt"
+    g "$1" checkout -q main
+    g "$1" merge -q --no-ff -m "merge $2" "$2"
+    g "$1" push -q origin main 2> /dev/null
+}
+
+# merged_remote_branch <repo> <branch>: like merged_local_branch, also pushed to origin.
+merged_remote_branch() {
+    merged_local_branch "$1" "$2"
+    g "$1" push -q origin "$2" 2> /dev/null
+}
+
+# merged_remote_only_branch <repo> <branch>: merged branch on origin only.
+merged_remote_only_branch() {
+    merged_remote_branch "$1" "$2"
+    g "$1" branch -q -D "$2"
+}
+
 # branch_with_commit <repo> <branch>: a branch with one commit of its own, pushed to
 # origin and kept locally (HEAD stays where it was).
 branch_with_commit() {

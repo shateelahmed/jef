@@ -43,9 +43,9 @@ refs_snapshot() {
 }
 
 @test "merged: lists ancestor-merged local and remote branches per repository" {
-    add_remote_branch alpha feat-a
-    add_local_branch alpha feat-b
-    remote_only_branch beta feat-c
+    merged_remote_branch alpha feat-a
+    merged_local_branch alpha feat-b
+    merged_remote_only_branch beta feat-c
     run_cmd merged -d "$WS"
     assert_status 0
     assert_contains "Target directory: $WS"
@@ -85,18 +85,18 @@ refs_snapshot() {
 }
 
 @test "merged: a custom DEFAULT_BRANCH is respected" {
+    merged_local_branch alpha feat
     g alpha branch -q trunk
     g alpha push -q origin trunk 2> /dev/null
     write_env "" "skipme" "trunk"
-    add_local_branch alpha feat
     run_cmd merged -d "$WS"
     assert_line_is "    - feat"
     refute_line_is "    - trunk"
 }
 
 @test "merged -l: only local branches" {
-    add_remote_branch alpha feat
-    remote_only_branch beta other
+    merged_remote_branch alpha feat
+    merged_remote_only_branch beta other
     run_cmd merged -l -d "$WS"
     assert_status 0
     assert_contains "Branches: local"
@@ -107,8 +107,8 @@ refs_snapshot() {
 }
 
 @test "merged -r: only remote branches" {
-    add_remote_branch alpha feat
-    remote_only_branch beta other
+    merged_remote_branch alpha feat
+    merged_remote_only_branch beta other
     run_cmd merged --remote -d "$WS"
     assert_status 0
     assert_contains "Branches: remote"
@@ -118,7 +118,7 @@ refs_snapshot() {
 }
 
 @test "merged -l -r: both, same as the default" {
-    add_remote_branch alpha feat
+    merged_remote_branch alpha feat
     run_cmd merged -l -r -d "$WS"
     assert_contains "Branches: local and remote"
     assert_line_is "  local"
@@ -128,9 +128,9 @@ refs_snapshot() {
 }
 
 @test "merged -m: limits the run to the named repositories" {
-    add_local_branch alpha feat
-    add_local_branch beta feat
-    add_local_branch gamma feat
+    merged_local_branch alpha feat
+    merged_local_branch beta feat
+    merged_local_branch gamma feat
     run_cmd merged -d "$WS" -m beta
     assert_status 0
     assert_contains "Repositories: beta"
@@ -141,9 +141,9 @@ refs_snapshot() {
 }
 
 @test "merged -m: comma lists, space lists and repeated flags combine" {
-    add_local_branch alpha feat
-    add_local_branch beta feat
-    add_local_branch gamma feat
+    merged_local_branch alpha feat
+    merged_local_branch beta feat
+    merged_local_branch gamma feat
     run_cmd merged -d "$WS" -m alpha,beta
     assert_line_is "alpha"
     assert_line_is "beta"
@@ -175,7 +175,7 @@ refs_snapshot() {
 }
 
 @test "merged: the checked-out branch is listed as kept and never deleted" {
-    add_local_branch alpha feat
+    merged_local_branch alpha feat
     g alpha checkout -q feat
     run_cmd merged -d "$WS"
     assert_line_is "    - feat (checked out, kept)"
@@ -187,8 +187,8 @@ refs_snapshot() {
 }
 
 @test "merged -D -y: deletes merged local and remote branches, keeps unmerged ones" {
-    add_remote_branch alpha feat
-    remote_only_branch beta other
+    merged_remote_branch alpha feat
+    merged_remote_only_branch beta other
     branch_with_commit gamma unmerged
     run_cmd merged -D -y -d "$WS"
     assert_status 0
@@ -214,8 +214,8 @@ refs_snapshot() {
 }
 
 @test "merged -D -y: deletes several remote branches of one repository in one push" {
-    remote_only_branch alpha one
-    remote_only_branch alpha two
+    merged_remote_only_branch alpha one
+    merged_remote_only_branch alpha two
     run_cmd merged -D -y -r -d "$WS"
     assert_status 0
     refute origin_has_branch alpha one
@@ -223,7 +223,7 @@ refs_snapshot() {
 }
 
 @test "merged -D -l -y: leaves remote branches alone" {
-    add_remote_branch alpha feat
+    merged_remote_branch alpha feat
     run_cmd merged -D -l -y -d "$WS"
     assert_status 0
     refute g alpha show-ref --quiet --heads feat
@@ -231,8 +231,8 @@ refs_snapshot() {
 }
 
 @test "merged -D: answering n aborts with exit 1 and deletes nothing" {
-    add_remote_branch alpha feat
-    add_local_branch beta feat
+    merged_remote_branch alpha feat
+    merged_local_branch beta feat
     local before after
     before=$(refs_snapshot)
     merged_tty n -D -d "$WS"
@@ -244,7 +244,7 @@ refs_snapshot() {
 }
 
 @test "merged -D: answering y deletes" {
-    add_local_branch alpha feat
+    merged_local_branch alpha feat
     merged_tty y -D -d "$WS"
     assert_status 0
     assert_contains "Delete 1 branch in 1 repository? [y/N]"
@@ -252,7 +252,7 @@ refs_snapshot() {
 }
 
 @test "merged -D: no terminal and no --yes exits 2 and deletes nothing" {
-    add_remote_branch alpha feat
+    merged_remote_branch alpha feat
     local before after
     before=$(refs_snapshot)
     run_cmd merged -D -d "$WS"
@@ -271,8 +271,8 @@ refs_snapshot() {
 }
 
 @test "merged -D -n: prints what would be deleted and changes nothing, even with -y" {
-    add_remote_branch alpha feat
-    add_local_branch beta feat
+    merged_remote_branch alpha feat
+    merged_local_branch beta feat
     local before after
     before=$(refs_snapshot)
     run_cmd merged -D -n -y -d "$WS"
@@ -293,15 +293,15 @@ refs_snapshot() {
 }
 
 @test "merged -D -n: needs no terminal" {
-    add_local_branch alpha feat
+    merged_local_branch alpha feat
     run_cmd merged -D -n -d "$WS"
     assert_status 0
     assert_line_is "      - feat"
 }
 
 @test "merged: a failed fetch marks the repository failed but local branches are still listed" {
-    add_local_branch alpha feat
-    add_remote_branch alpha fed
+    merged_local_branch alpha feat
+    merged_remote_branch alpha fed
     g alpha remote set-url origin "$T/does-not-exist.git"
     run_cmd merged -d "$WS"
     assert_status 3
@@ -314,14 +314,14 @@ refs_snapshot() {
 
 @test "merged: always fetches first, so a branch merged on origin is found" {
     branch_with_commit alpha late
-    git -C "$ORIGINS/alpha.git" update-ref refs/heads/main "$(g alpha rev-parse late)"
+    squash_merge_on_origin alpha late
     run_cmd merged -d "$WS"
     assert_line_is "    - late"
     assert_line_is "    - origin/late"
 }
 
 @test "merged: falls back to the local default branch when origin has none" {
-    add_local_branch alpha feat
+    merged_local_branch alpha feat
     g alpha remote set-url origin "$T/does-not-exist.git"
     g alpha update-ref -d refs/remotes/origin/main
     run_cmd merged -d "$WS"
@@ -367,7 +367,7 @@ EOF
 }
 
 @test "merged: no escape codes when piped, coloured on a terminal unless NO_COLOR is set" {
-    add_local_branch alpha feat
+    merged_local_branch alpha feat
     TERM=xterm-256color run_cmd merged -d "$WS"
     refute_contains $'\033'
     TERM=xterm-256color merged_tty n -D -d "$WS"
@@ -402,7 +402,7 @@ EOF
 }
 
 @test "merged -D -y: branches that could not be deleted are marked in the list" {
-    add_remote_branch alpha feat
+    merged_remote_branch alpha feat
     printf '#!/bin/sh\nexit 1\n' > "$ORIGINS/alpha.git/hooks/pre-receive"
     chmod +x "$ORIGINS/alpha.git/hooks/pre-receive"
     run_cmd merged -D -y -d "$WS"
