@@ -346,24 +346,66 @@ branch_note() {
     fi
 }
 
+# Number of whitespace separated words in <list> (branch names contain no spaces).
+count_words() { # count_words <list>
+    local word n=0
+    for word in $1; do
+        n=$((n + 1))
+    done
+    echo "$n"
+}
+
+# Grand total line, "<indent>Total: N branches in M repositories", counting the branches shown in the
+# blocks of the repositories that have merged branches (or, with a second argument, deletable ones).
+# Prints nothing when there are none.
+print_merged_total() { # print_merged_total <indent> [deletable only]
+    local i n=0 repos=0 shown branch_noun="branches" repo_noun="repositories"
+    for ((i = 0; i < ${#repo_list[@]}; i++)); do
+        if [ -n "${2:-}" ] && ! has_deletable "$i"; then
+            continue
+        fi
+        shown=$(( $(count_words "${scan_local[$i]}") + $(count_words "${scan_remote[$i]}") ))
+        if [ "$shown" -gt 0 ]; then
+            n=$((n + shown))
+            repos=$((repos + 1))
+        fi
+    done
+    if [ "$n" -eq 0 ]; then
+        return 0 # nothing to show: no total
+    fi
+    if [ "$n" -eq 1 ]; then
+        branch_noun="branch"
+    fi
+    if [ "$repos" -eq 1 ]; then
+        repo_noun="repository"
+    fi
+    echo "$1Total: $n $branch_noun in $repos $repo_noun"
+}
+
 # Print repository <index> as a bulleted block indented by <indent>: its name, then a "local" and a
 # "remote" group (each only when it has branches) with one "- branch" line per branch. With a third
 # argument (any value) the repository's problems are printed under its name; with a fourth the
 # outcome of the deletion (res_* lists) is shown as well.
 print_merged_tree() { # print_merged_tree <indent> <index> [problems] [result]
-    local indent="$1" index="$2" name
-    echo "${indent}${green}$(get_directory_name "${repo_list[$index]}")${reset}"
+    local indent="$1" index="$2" name count local_count remote_count
+    local_count=$(count_words "${scan_local[$index]}")
+    remote_count=$(count_words "${scan_remote[$index]}")
+    count=""
+    if [ $((local_count + remote_count)) -gt 0 ]; then
+        count=" ($((local_count + remote_count)))"
+    fi
+    echo "${indent}${green}$(get_directory_name "${repo_list[$index]}")${count}${reset}"
     if [ -n "${3:-}" ]; then
         print_repo_problems "$index" "${indent}  "
     fi
     if [ -n "${scan_local[$index]}" ]; then
-        echo "${indent}  ${magenta}local${reset}"
+        echo "${indent}  ${magenta}local (${local_count})${reset}"
         for name in ${scan_local[$index]}; do
             echo "${indent}    - ${cyan}$name${reset}$(branch_note "$index" local "$name" "${4:-}")"
         done
     fi
     if [ -n "${scan_remote[$index]}" ]; then
-        echo "${indent}  ${magenta}remote${reset}"
+        echo "${indent}  ${magenta}remote (${remote_count})${reset}"
         for name in ${scan_remote[$index]}; do
             echo "${indent}    - ${cyan}origin/$name${reset}$(branch_note "$index" remote "$name" "${4:-}")"
         done
@@ -566,6 +608,7 @@ for ((i = 0; i < ${#repo_list[@]}; i++)); do
 done
 
 if ! $delete_branches; then
+    print_merged_total ""
     for ((i = 0; i < ${#repo_list[@]}; i++)); do
         list_repo "$i"
     done
@@ -574,6 +617,7 @@ else
         # A dry run prints the plan as the same bulleted list and never asks.
         echo
         echo "Would delete these merged branches:"
+        print_merged_total "  "
         first_block="y"
         for ((i = 0; i < ${#repo_list[@]}; i++)); do
             dry_run_repo "$i" "$first_block"
@@ -585,6 +629,7 @@ else
         # Plan and confirmation.
         echo
         echo "Will delete these merged branches:"
+        print_merged_total "  " deletable
         plan_blocks=0
         for ((i = 0; i < ${#repo_list[@]}; i++)); do
             if has_deletable "$i"; then
@@ -612,6 +657,7 @@ else
             echo
         fi
         echo "Deleted merged branches:"
+        print_merged_total "  "
         first_block="y"
         for ((i = 0; i < ${#repo_list[@]}; i++)); do
             delete_repo "$i" "$first_block"

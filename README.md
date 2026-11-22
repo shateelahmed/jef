@@ -67,16 +67,21 @@ Your `.env` lives in the repository clone, so no `.env` migration is needed.
 - Run `jef merged` to list, per repository, the local and remote branches already merged into `DEFAULT_BRANCH` (ancestors of it, or squash/rebase-merged: merging them would change nothing). Every repository is fetched first. Use `-l`/`-r` for local or remote only, `-m alpha,beta` (repeatable) for specific repositories, and `-D` to delete the listed branches after confirmation (`-n` to preview, `-y` to skip the question). Example:
 
   ```
-  alpha
-    local
+  Total: 4 branches in 2 repositories
+
+  alpha (3)
+    local (2)
       - feat-a
       - feat-b (checked out, kept)
-    remote
+    remote (1)
       - origin/feat-a
-  beta
-    remote
+
+  beta (1)
+    remote (1)
       - origin/feat-c
   ```
+
+  The number next to a repository and next to `local`/`remote` is how many branches are listed there (including ones noted as kept); `Total: N branches in M repositories` comes first (in the `-D` lists, 2 spaces indented under the header). Repositories that only show a problem get no count and are not in the total. With `-D`, the lists are indented by 2.
 
   Colours (only on a terminal, never with `NO_COLOR`): repository green, `local`/`remote` magenta, branches cyan, the `(checked out, kept)` note yellow. `-D` shows the same list under "Will delete these merged branches:" before asking, and again under "Deleted merged branches:" afterwards, with branches that could not be deleted marked `(could not delete)` in red; `-D -n` shows it under "Would delete these merged branches:".
 

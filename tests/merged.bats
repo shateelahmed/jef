@@ -51,13 +51,14 @@ refs_snapshot() {
     assert_contains "Target directory: $WS"
     assert_contains "Branches: local and remote"
     refute_contains "Working directory"
-    assert_line_is "alpha"
-    assert_line_is "  local"
+    assert_line_is "Total: 4 branches in 2 repositories"
+    assert_line_is "alpha (3)"
+    assert_line_is "  local (2)"
     assert_line_is "    - feat-a"
     assert_line_is "    - feat-b"
-    assert_line_is "  remote"
+    assert_line_is "  remote (1)"
     assert_line_is "    - origin/feat-a"
-    assert_line_is "beta"
+    assert_line_is "beta (1)"
     assert_line_is "    - origin/feat-c"
     refute_line_is "gamma"
     refute_contains "local:"
@@ -100,7 +101,7 @@ refs_snapshot() {
     run_cmd merged -l -d "$WS"
     assert_status 0
     assert_contains "Branches: local"
-    assert_line_is "  local"
+    assert_line_is "  local (1)"
     assert_line_is "    - feat"
     refute_line_is "  remote"
     refute_line_is "beta"
@@ -121,9 +122,9 @@ refs_snapshot() {
     merged_remote_branch alpha feat
     run_cmd merged -l -r -d "$WS"
     assert_contains "Branches: local and remote"
-    assert_line_is "  local"
+    assert_line_is "  local (1)"
     assert_line_is "    - feat"
-    assert_line_is "  remote"
+    assert_line_is "  remote (1)"
     assert_line_is "    - origin/feat"
 }
 
@@ -134,9 +135,9 @@ refs_snapshot() {
     run_cmd merged -d "$WS" -m beta
     assert_status 0
     assert_contains "Repositories: beta"
-    assert_line_is "beta"
-    refute_line_is "alpha"
-    refute_line_is "gamma"
+    assert_line_is "beta (1)"
+    refute_line_is "alpha (1)"
+    refute_line_is "gamma (1)"
     assert_contains "Summary: 1 done, 0 failed, 0 skipped"
 }
 
@@ -145,17 +146,17 @@ refs_snapshot() {
     merged_local_branch beta feat
     merged_local_branch gamma feat
     run_cmd merged -d "$WS" -m alpha,beta
-    assert_line_is "alpha"
-    assert_line_is "beta"
-    refute_line_is "gamma"
+    assert_line_is "alpha (1)"
+    assert_line_is "beta (1)"
+    refute_line_is "gamma (1)"
     run_cmd merged -d "$WS" -m "alpha gamma"
-    assert_line_is "gamma"
-    refute_line_is "beta"
+    assert_line_is "gamma (1)"
+    refute_line_is "beta (1)"
     run_cmd merged -d "$WS" -m alpha --repo=gamma
     assert_contains "Repositories: alpha gamma"
-    assert_line_is "alpha"
-    assert_line_is "gamma"
-    refute_line_is "beta"
+    assert_line_is "alpha (1)"
+    assert_line_is "gamma (1)"
+    refute_line_is "beta (1)"
 }
 
 @test "merged -m: an unknown repository is a usage error" {
@@ -193,14 +194,15 @@ refs_snapshot() {
     run_cmd merged -D -y -d "$WS"
     assert_status 0
     assert_contains "Will delete these merged branches:"
-    assert_line_is "  alpha"
+    assert_line_is "  Total: 3 branches in 2 repositories"
+    assert_line_is "  alpha (2)"
     assert_line_is "      - feat"
     assert_line_is "      - origin/feat"
-    assert_line_is "    local"
-    assert_line_is "    remote"
+    assert_line_is "    local (1)"
+    assert_line_is "    remote (1)"
     assert_contains "Deleted merged branches:"
     deleted_part="${output#*Deleted merged branches:}"
-    expected=$'\n  alpha\n    local\n      - feat\n    remote\n      - origin/feat\n\n  beta\n    remote\n      - origin/other\n'
+    expected=$'\n  Total: 3 branches in 2 repositories\n  alpha (2)\n    local (1)\n      - feat\n    remote (1)\n      - origin/feat\n\n  beta (1)\n    remote (1)\n      - origin/other\n'
     [[ "$deleted_part" == "$expected"* ]] || { echo "got: $deleted_part"; return 1; }
     refute_contains "Deleted local branch"
     refute_contains "Working directory"
@@ -279,10 +281,11 @@ refs_snapshot() {
     assert_status 0
     assert_contains "Dry run: true"
     assert_contains "Would delete these merged branches:"
-    assert_line_is "  alpha"
-    assert_line_is "    local"
+    assert_line_is "  Total: 3 branches in 2 repositories"
+    assert_line_is "  alpha (2)"
+    assert_line_is "    local (1)"
     assert_line_is "      - feat"
-    assert_line_is "    remote"
+    assert_line_is "    remote (1)"
     assert_line_is "      - origin/feat"
     refute_contains "Would delete local branch"
     refute_contains "Working directory"
@@ -326,6 +329,70 @@ refs_snapshot() {
     g alpha update-ref -d refs/remotes/origin/main
     run_cmd merged -d "$WS"
     assert_line_is "    - feat"
+}
+
+@test "merged: counts next to repositories and labels, and a total at the top" {
+    merged_remote_branch alpha feat-a
+    merged_local_branch alpha feat-b
+    merged_remote_only_branch beta feat-c
+    run_cmd merged -d "$WS"
+    assert_status 0
+    assert_line_is "Total: 4 branches in 2 repositories"
+    assert_line_is "alpha (3)"
+    assert_line_is "  local (2)"
+    assert_line_is "  remote (1)"
+    assert_line_is "beta (1)"
+    refute_line_is "gamma (0)"
+    total_line=$(printf '%s\n' "$output" | grep -n "Total:" | cut -d: -f1)
+    alpha_line=$(printf '%s\n' "$output" | grep -nx "alpha (3)" | cut -d: -f1)
+    [ "$total_line" -lt "$alpha_line" ]
+}
+
+@test "merged: the total is singular for one branch in one repository" {
+    merged_local_branch alpha feat
+    run_cmd merged -d "$WS"
+    assert_status 0
+    assert_line_is "Total: 1 branch in 1 repository"
+    assert_line_is "alpha (1)"
+}
+
+@test "merged: a repository that only has a fetch problem gets no count and is not in the total" {
+    merged_local_branch alpha feat
+    merged_remote_only_branch beta other
+    g beta remote set-url origin "$T/does-not-exist.git"
+    run_cmd merged -d "$WS"
+    assert_status 3
+    assert_line_is "Total: 1 branch in 1 repository"
+    assert_line_is "alpha (1)"
+    assert_line_is "beta"
+    assert_line_is "  Could not fetch origin in beta"
+    refute_contains "beta ("
+}
+
+@test "merged -D -y: the plan and the result show counts and a total" {
+    merged_remote_branch alpha feat
+    merged_remote_only_branch beta other
+    run_cmd merged -D -y -d "$WS"
+    assert_status 0
+    plan="${output%%Deleted merged branches:*}"
+    [[ "$plan" == *$'Will delete these merged branches:\n  Total: 3 branches in 2 repositories\n  alpha (2)\n'* ]] || { echo "got: $plan"; return 1; }
+    [[ "$output" == *$'Deleted merged branches:\n  Total: 3 branches in 2 repositories\n  alpha (2)\n'* ]] || { echo "got: $output"; return 1; }
+}
+
+@test "merged -D -n: the dry run shows a singular total" {
+    merged_local_branch alpha feat
+    run_cmd merged -D -n -d "$WS"
+    assert_status 0
+    assert_line_is "  Total: 1 branch in 1 repository"
+    assert_line_is "  alpha (1)"
+    assert_line_is "    local (1)"
+}
+
+@test "merged: nothing merged prints no total" {
+    run_cmd merged -d "$WS"
+    assert_status 0
+    assert_contains "No merged branches found"
+    refute_contains "Total:"
 }
 
 @test "merged: a repository without the default branch is skipped with a message" {
