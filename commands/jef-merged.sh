@@ -192,23 +192,30 @@ scan_repo() { # scan_repo <index>: fetch, then find the merged branches of repo_
     scan_remote[index]="${remotes% }"
 }
 
-# Print the merged branches of repository <index> as lines starting with <indent>.
-print_merged_lines() { # print_merged_lines <indent> <index>
-    local indent="$1" index="$2" name text="" remote_text=""
-    for name in ${scan_local[$index]}; do
-        text+="${text:+, }$name"
-        if [ "$name" == "${scan_current[$index]}" ]; then
-            text+=" (checked out, kept)"
-        fi
-    done
-    for name in ${scan_remote[$index]}; do
-        remote_text+="${remote_text:+, }origin/$name"
-    done
-    if [ -n "$text" ]; then
-        echo "${indent}local:  $text"
+# Print repository <index> as a bulleted block indented by <indent>: its name, then a "local" and a
+# "remote" group (each only when it has branches) with one "- branch" line per branch. With a third
+# argument (any value) the repository's problems are printed under its name.
+print_merged_tree() { # print_merged_tree <indent> <index> [problems]
+    local indent="$1" index="$2" name
+    echo "${indent}${green}$(get_directory_name "${repo_list[$index]}")${reset}"
+    if [ -n "${3:-}" ]; then
+        print_repo_problems "$index" "${indent}  "
     fi
-    if [ -n "$remote_text" ]; then
-        echo "${indent}remote: $remote_text"
+    if [ -n "${scan_local[$index]}" ]; then
+        echo "${indent}  ${magenta}local${reset}"
+        for name in ${scan_local[$index]}; do
+            if [ "$name" == "${scan_current[$index]}" ]; then
+                echo "${indent}    - ${cyan}$name${reset} ${yellow}(checked out, kept)${reset}"
+            else
+                echo "${indent}    - ${cyan}$name${reset}"
+            fi
+        done
+    fi
+    if [ -n "${scan_remote[$index]}" ]; then
+        echo "${indent}  ${magenta}remote${reset}"
+        for name in ${scan_remote[$index]}; do
+            echo "${indent}    - ${cyan}origin/$name${reset}"
+        done
     fi
 }
 
@@ -222,30 +229,29 @@ has_problem() {
     [ "${scan_state[$1]}" == "nobase" ] || [ -n "${scan_fetch_failed[$1]}" ]
 }
 
-# Messages for the problems of one repository (printed under its header).
-print_repo_problems() { # print_repo_problems <index>
-    local directory_name
+# Messages for the problems of one repository (printed under its header or name).
+print_repo_problems() { # print_repo_problems <index> [indent]
+    local directory_name indent="${2:-}"
     directory_name=$(get_directory_name "${repo_list[$1]}")
     if [ "${scan_state[$1]}" == "nobase" ]; then
-        echo "Neither origin/${DEFAULT_BRANCH} nor ${DEFAULT_BRANCH} exists in $directory_name. skipping..."
+        echo "${indent}Neither origin/${DEFAULT_BRANCH} nor ${DEFAULT_BRANCH} exists in $directory_name. skipping..."
     fi
     if [ -n "${scan_fetch_failed[$1]}" ]; then
-        echo "${red}Could not fetch origin in $directory_name${reset}"
+        echo "${indent}${red}Could not fetch origin in $directory_name${reset}"
     fi
 }
 
-# Listing: one block per repository that has merged branches or a problem.
+# Listing: one block per repository that has merged branches or a problem, each after a blank line.
 list_repo() { # list_repo <index>
     local index="$1"
     if ! has_merged "$index" && ! has_problem "$index"; then
         mark_repo_skipped
         return 0
     fi
-    print_repo_header "${repo_list[$index]}"
-    print_repo_problems "$index"
+    echo
+    print_merged_tree "" "$index" problems
     if has_merged "$index"; then
         found_merged="y"
-        print_merged_lines "  " "$index"
     fi
     if [ -n "${scan_fetch_failed[$index]}" ]; then
         mark_repo_failed
@@ -256,16 +262,39 @@ list_repo() { # list_repo <index>
     fi
 }
 
-# Deletion (or its dry run) for repository <index>, from the cached scan.
-delete_repo() { # delete_repo <index>
-    local index="$1" name repo_failed="" deleted="" push_output remote_refs
-    local directory="${repo_list[$index]}"
+# Dry run of the deletion for repository <index>: its block (with problems) in the plan list.
+dry_run_repo() { # dry_run_repo <index> <is first block: y or "">
+    local index="$1"
     if ! has_merged "$index" && ! has_problem "$index"; then
         mark_repo_skipped
         return 0
     fi
-    print_repo_header "$directory"
-    print_repo_problems "$index"
+    if [ -z "$2" ]; then
+        echo
+    fi
+    print_merged_tree "  " "$index" problems
+    if has_merged "$index"; then
+        found_merged="y"
+    fi
+    if [ -n "${scan_fetch_failed[$index]}" ]; then
+        mark_repo_failed
+    elif [ -n "${scan_del_local[$index]}${scan_remote[$index]}" ]; then
+        mark_repo_done
+    else
+        mark_repo_skipped
+    fi
+}
+
+# Deletion for repository <index>, from the cached scan. Prints the repository as a bulleted
+# block like the listing: deleted branches plainly, the checked-out branch marked kept and
+# branches that could not be deleted marked in red.
+delete_repo() { # delete_repo <index> <is first block: y or "">
+    local index="$1" name repo_failed="" deleted="" push_output="" remote_refs
+    local directory="${repo_list[$index]}" failed_local=" " remote_failed=""
+    if ! has_merged "$index" && ! has_problem "$index"; then
+        mark_repo_skipped
+        return 0
+    fi
     if [ -n "${scan_fetch_failed[$index]}" ]; then
         repo_failed="y"
     fi
@@ -273,44 +302,57 @@ delete_repo() { # delete_repo <index>
         found_merged="y"
     fi
 
-    for name in ${scan_local[$index]}; do
-        if [ "$name" == "${scan_current[$index]}" ]; then
-            echo "Kept checked-out branch $name (merged, not deleted)"
-        fi
-    done
     for name in ${scan_del_local[$index]}; do
-        if $dry_run; then
-            echo "Would delete local branch $name"
-            deleted="y"
-        elif git -C "$directory" branch -D -- "$name" &> /dev/null; then
-            echo "Deleted local branch $name"
+        if git -C "$directory" branch -D -- "$name" &> /dev/null; then
             deleted="y"
         else
-            echo "${red}Could not delete local branch $name${reset}"
+            failed_local+="$name "
             repo_failed="y"
         fi
     done
     if [ -n "${scan_remote[$index]}" ]; then
-        if $dry_run; then
-            for name in ${scan_remote[$index]}; do
-                echo "Would delete remote branch $name"
-            done
+        remote_refs=()
+        for name in ${scan_remote[$index]}; do
+            remote_refs+=("refs/heads/$name")
+        done
+        if push_output=$(git -C "$directory" push origin --delete "${remote_refs[@]}" 2>&1); then
             deleted="y"
         else
-            remote_refs=()
-            for name in ${scan_remote[$index]}; do
-                remote_refs+=("refs/heads/$name")
-            done
-            if push_output=$(git -C "$directory" push origin --delete "${remote_refs[@]}" 2>&1); then
-                for name in ${scan_remote[$index]}; do
-                    echo "Deleted remote branch $name"
-                done
-                deleted="y"
+            remote_failed="y"
+            repo_failed="y"
+        fi
+    fi
+
+    if [ -z "$2" ]; then
+        echo
+    fi
+    echo "  ${green}$(get_directory_name "$directory")${reset}"
+    print_repo_problems "$index" "    "
+    if [ -n "${scan_local[$index]}" ]; then
+        echo "    ${magenta}local${reset}"
+        for name in ${scan_local[$index]}; do
+            if [ "$name" == "${scan_current[$index]}" ]; then
+                echo "      - ${cyan}$name${reset} ${yellow}(checked out, kept)${reset}"
+            elif [[ "$failed_local" == *" $name "* ]]; then
+                echo "      - ${cyan}$name${reset} ${red}(could not delete)${reset}"
             else
-                echo "$push_output"
-                echo "${red}Could not delete the remote branches in $(get_directory_name "$directory")${reset}"
-                repo_failed="y"
+                echo "      - ${cyan}$name${reset}"
             fi
+        done
+    fi
+    if [ -n "${scan_remote[$index]}" ]; then
+        echo "    ${magenta}remote${reset}"
+        for name in ${scan_remote[$index]}; do
+            if [ -n "$remote_failed" ]; then
+                echo "      - ${cyan}origin/$name${reset} ${red}(could not delete)${reset}"
+            else
+                echo "      - ${cyan}origin/$name${reset}"
+            fi
+        done
+        if [ -n "$remote_failed" ]; then
+            while IFS= read -r name; do
+                echo "        $name"
+            done <<< "$push_output"
         fi
     fi
 
@@ -347,14 +389,29 @@ if ! $delete_branches; then
         list_repo "$i"
     done
 else
-    # Plan and confirmation. A dry run never asks: its would-delete lines are the plan.
-    if ! $dry_run && [ "$delete_branch_count" -gt 0 ]; then
+    if $dry_run; then
+        # A dry run prints the plan as the same bulleted list and never asks.
+        echo
+        echo "Would delete these merged branches:"
+        first_block="y"
+        for ((i = 0; i < ${#repo_list[@]}; i++)); do
+            dry_run_repo "$i" "$first_block"
+            if has_merged "$i" || has_problem "$i"; then
+                first_block=""
+            fi
+        done
+    elif [ "$delete_branch_count" -gt 0 ]; then
+        # Plan and confirmation.
         echo
         echo "Will delete these merged branches:"
+        plan_blocks=0
         for ((i = 0; i < ${#repo_list[@]}; i++)); do
             if [ -n "${scan_del_local[$i]}${scan_remote[$i]}" ]; then
-                echo "  $(get_directory_name "${repo_list[$i]}")"
-                print_merged_lines "    " "$i"
+                if [ "$plan_blocks" -gt 0 ]; then
+                    echo
+                fi
+                print_merged_tree "  " "$i"
+                plan_blocks=$((plan_blocks + 1))
             fi
         done
         echo
@@ -368,9 +425,20 @@ else
         fi
         confirm_or_exit "Delete $delete_branch_count $branch_noun in $delete_repo_count $repo_noun?"
     fi
-    for ((i = 0; i < ${#repo_list[@]}; i++)); do
-        delete_repo "$i"
-    done
+    if ! $dry_run; then
+        # The plan already ends with a blank line unless a question followed it
+        if ! { [ "$delete_branch_count" -gt 0 ] && $assume_yes; }; then
+            echo
+        fi
+        echo "Deleted merged branches:"
+        first_block="y"
+        for ((i = 0; i < ${#repo_list[@]}; i++)); do
+            delete_repo "$i" "$first_block"
+            if has_merged "$i" || has_problem "$i"; then
+                first_block=""
+            fi
+        done
+    fi
 fi
 
 if [ -z "$found_merged" ]; then

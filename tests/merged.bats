@@ -14,6 +14,24 @@ merged_tty() {
     run_tty "$input" "$JEF_BASH" "$JEF_HOME/commands/jef-merged.sh" "$@"
 }
 
+# assert_line_is <text>: some line of the output is exactly <text>.
+assert_line_is() {
+    if printf '%s\n' "$output" | grep -qxF -- "$1"; then
+        return 0
+    fi
+    echo "expected a line: $1"
+    echo "--- output ---"
+    echo "$output"
+    return 1
+}
+
+refute_line_is() {
+    if printf '%s\n' "$output" | grep -qxF -- "$1"; then
+        echo "unexpected line: $1"
+        return 1
+    fi
+}
+
 refs_snapshot() {
     local d
     for d in "$WS"/alpha "$WS"/beta "$WS"/gamma; do
@@ -32,12 +50,17 @@ refs_snapshot() {
     assert_status 0
     assert_contains "Target directory: $WS"
     assert_contains "Branches: local and remote"
-    assert_contains "Working directory alpha"
-    assert_contains "local:  feat-a, feat-b"
-    assert_contains "remote: origin/feat-a"
-    assert_contains "Working directory beta"
-    assert_contains "remote: origin/feat-c"
-    refute_contains "Working directory gamma"
+    refute_contains "Working directory"
+    assert_line_is "alpha"
+    assert_line_is "  local"
+    assert_line_is "    - feat-a"
+    assert_line_is "    - feat-b"
+    assert_line_is "  remote"
+    assert_line_is "    - origin/feat-a"
+    assert_line_is "beta"
+    assert_line_is "    - origin/feat-c"
+    refute_line_is "gamma"
+    refute_contains "local:"
     assert_contains "Summary: 2 done, 0 failed, 1 skipped"
 }
 
@@ -47,8 +70,8 @@ refs_snapshot() {
     squash_merge_on_origin alpha squashed
     run_cmd merged -d "$WS"
     assert_status 0
-    assert_contains "local:  squashed"
-    assert_contains "remote: origin/squashed"
+    assert_line_is "    - squashed"
+    assert_line_is "    - origin/squashed"
     refute_contains "unmerged"
 }
 
@@ -67,9 +90,8 @@ refs_snapshot() {
     write_env "" "skipme" "trunk"
     add_local_branch alpha feat
     run_cmd merged -d "$WS"
-    assert_contains "local:  feat"
-    refute_contains "trunk,"
-    refute_contains ", trunk"
+    assert_line_is "    - feat"
+    refute_line_is "    - trunk"
 }
 
 @test "merged -l: only local branches" {
@@ -78,9 +100,10 @@ refs_snapshot() {
     run_cmd merged -l -d "$WS"
     assert_status 0
     assert_contains "Branches: local"
-    assert_contains "local:  feat"
-    refute_contains "remote:"
-    refute_contains "Working directory beta"
+    assert_line_is "  local"
+    assert_line_is "    - feat"
+    refute_line_is "  remote"
+    refute_line_is "beta"
 }
 
 @test "merged -r: only remote branches" {
@@ -89,17 +112,19 @@ refs_snapshot() {
     run_cmd merged --remote -d "$WS"
     assert_status 0
     assert_contains "Branches: remote"
-    assert_contains "remote: origin/feat"
-    assert_contains "remote: origin/other"
-    refute_contains "local:"
+    assert_line_is "    - origin/feat"
+    assert_line_is "    - origin/other"
+    refute_line_is "  local"
 }
 
 @test "merged -l -r: both, same as the default" {
     add_remote_branch alpha feat
     run_cmd merged -l -r -d "$WS"
     assert_contains "Branches: local and remote"
-    assert_contains "local:  feat"
-    assert_contains "remote: origin/feat"
+    assert_line_is "  local"
+    assert_line_is "    - feat"
+    assert_line_is "  remote"
+    assert_line_is "    - origin/feat"
 }
 
 @test "merged -m: limits the run to the named repositories" {
@@ -109,9 +134,9 @@ refs_snapshot() {
     run_cmd merged -d "$WS" -m beta
     assert_status 0
     assert_contains "Repositories: beta"
-    assert_contains "Working directory beta"
-    refute_contains "Working directory alpha"
-    refute_contains "Working directory gamma"
+    assert_line_is "beta"
+    refute_line_is "alpha"
+    refute_line_is "gamma"
     assert_contains "Summary: 1 done, 0 failed, 0 skipped"
 }
 
@@ -120,17 +145,17 @@ refs_snapshot() {
     add_local_branch beta feat
     add_local_branch gamma feat
     run_cmd merged -d "$WS" -m alpha,beta
-    assert_contains "Working directory alpha"
-    assert_contains "Working directory beta"
-    refute_contains "Working directory gamma"
+    assert_line_is "alpha"
+    assert_line_is "beta"
+    refute_line_is "gamma"
     run_cmd merged -d "$WS" -m "alpha gamma"
-    assert_contains "Working directory gamma"
-    refute_contains "Working directory beta"
+    assert_line_is "gamma"
+    refute_line_is "beta"
     run_cmd merged -d "$WS" -m alpha --repo=gamma
     assert_contains "Repositories: alpha gamma"
-    assert_contains "Working directory alpha"
-    assert_contains "Working directory gamma"
-    refute_contains "Working directory beta"
+    assert_line_is "alpha"
+    assert_line_is "gamma"
+    refute_line_is "beta"
 }
 
 @test "merged -m: an unknown repository is a usage error" {
@@ -153,10 +178,10 @@ refs_snapshot() {
     add_local_branch alpha feat
     g alpha checkout -q feat
     run_cmd merged -d "$WS"
-    assert_contains "local:  feat (checked out, kept)"
+    assert_line_is "    - feat (checked out, kept)"
     run_cmd merged -D -y -d "$WS"
     assert_status 0
-    assert_contains "Kept checked-out branch feat"
+    [[ "${output#*Deleted merged branches:}" == *"      - feat (checked out, kept)"* ]]
     [ "$(current_branch alpha)" = feat ]
     g alpha show-ref --quiet --heads feat
 }
@@ -168,9 +193,17 @@ refs_snapshot() {
     run_cmd merged -D -y -d "$WS"
     assert_status 0
     assert_contains "Will delete these merged branches:"
-    assert_contains "Deleted local branch feat"
-    assert_contains "Deleted remote branch feat"
-    assert_contains "Deleted remote branch other"
+    assert_line_is "  alpha"
+    assert_line_is "      - feat"
+    assert_line_is "      - origin/feat"
+    assert_line_is "    local"
+    assert_line_is "    remote"
+    assert_contains "Deleted merged branches:"
+    deleted_part="${output#*Deleted merged branches:}"
+    expected=$'\n  alpha\n    local\n      - feat\n    remote\n      - origin/feat\n\n  beta\n    remote\n      - origin/other\n'
+    [[ "$deleted_part" == "$expected"* ]] || { echo "got: $deleted_part"; return 1; }
+    refute_contains "Deleted local branch"
+    refute_contains "Working directory"
     assert_contains "Summary: 2 done, 0 failed, 1 skipped"
     refute g alpha show-ref --quiet --heads feat
     refute origin_has_branch alpha feat
@@ -245,8 +278,14 @@ refs_snapshot() {
     run_cmd merged -D -n -y -d "$WS"
     assert_status 0
     assert_contains "Dry run: true"
-    assert_contains "Would delete local branch feat"
-    assert_contains "Would delete remote branch feat"
+    assert_contains "Would delete these merged branches:"
+    assert_line_is "  alpha"
+    assert_line_is "    local"
+    assert_line_is "      - feat"
+    assert_line_is "    remote"
+    assert_line_is "      - origin/feat"
+    refute_contains "Would delete local branch"
+    refute_contains "Working directory"
     refute_contains "[y/N]"
     assert_contains "Summary: 2 done, 0 failed, 1 skipped"
     after=$(refs_snapshot)
@@ -257,7 +296,7 @@ refs_snapshot() {
     add_local_branch alpha feat
     run_cmd merged -D -n -d "$WS"
     assert_status 0
-    assert_contains "Would delete local branch feat"
+    assert_line_is "      - feat"
 }
 
 @test "merged: a failed fetch marks the repository failed but local branches are still listed" {
@@ -266,9 +305,10 @@ refs_snapshot() {
     g alpha remote set-url origin "$T/does-not-exist.git"
     run_cmd merged -d "$WS"
     assert_status 3
-    assert_contains "Could not fetch origin in alpha"
-    assert_contains "local:  feat, fed"
-    refute_contains "remote:"
+    assert_line_is "  Could not fetch origin in alpha"
+    assert_line_is "    - feat"
+    assert_line_is "    - fed"
+    refute_line_is "  remote"
     assert_contains "1 failed"
 }
 
@@ -276,8 +316,8 @@ refs_snapshot() {
     branch_with_commit alpha late
     git -C "$ORIGINS/alpha.git" update-ref refs/heads/main "$(g alpha rev-parse late)"
     run_cmd merged -d "$WS"
-    assert_contains "local:  late"
-    assert_contains "remote: origin/late"
+    assert_line_is "    - late"
+    assert_line_is "    - origin/late"
 }
 
 @test "merged: falls back to the local default branch when origin has none" {
@@ -285,14 +325,15 @@ refs_snapshot() {
     g alpha remote set-url origin "$T/does-not-exist.git"
     g alpha update-ref -d refs/remotes/origin/main
     run_cmd merged -d "$WS"
-    assert_contains "local:  feat"
+    assert_line_is "    - feat"
 }
 
 @test "merged: a repository without the default branch is skipped with a message" {
     write_env "" "skipme" "nosuchbranch"
     run_cmd merged -d "$WS"
     assert_status 0
-    assert_contains "Neither origin/nosuchbranch nor nosuchbranch exists in alpha. skipping..."
+    assert_line_is "alpha"
+    assert_line_is "  Neither origin/nosuchbranch nor nosuchbranch exists in alpha. skipping..."
     assert_contains "Summary: 0 done, 0 failed, 3 skipped"
 }
 
@@ -325,6 +366,16 @@ EOF
     [ "$count" -eq 1 ]
 }
 
+@test "merged: no escape codes when piped, coloured on a terminal unless NO_COLOR is set" {
+    add_local_branch alpha feat
+    TERM=xterm-256color run_cmd merged -d "$WS"
+    refute_contains $'\033'
+    TERM=xterm-256color merged_tty n -D -d "$WS"
+    assert_contains $'\033['
+    NO_COLOR=1 TERM=xterm-256color merged_tty n -D -d "$WS"
+    refute_contains $'\033'
+}
+
 @test "merged: -c clears the proxy variables" {
     run_cmd merged -c -d "$WS"
     assert_contains "Clear proxy: true"
@@ -348,4 +399,18 @@ EOF
     run_cmd merged -d "$WS" extra
     assert_status 2
     assert_contains "0 arguments required. 1 provided"
+}
+
+@test "merged -D -y: branches that could not be deleted are marked in the list" {
+    add_remote_branch alpha feat
+    printf '#!/bin/sh\nexit 1\n' > "$ORIGINS/alpha.git/hooks/pre-receive"
+    chmod +x "$ORIGINS/alpha.git/hooks/pre-receive"
+    run_cmd merged -D -y -d "$WS"
+    assert_status 3
+    deleted_part="${output#*Deleted merged branches:}"
+    [[ "$deleted_part" == *"      - feat"$'\n'* ]]
+    [[ "$deleted_part" == *"      - origin/feat (could not delete)"* ]]
+    assert_contains "Summary: 0 done, 1 failed"
+    refute g alpha show-ref --quiet --heads feat
+    origin_has_branch alpha feat
 }

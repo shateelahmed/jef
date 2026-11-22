@@ -6,7 +6,7 @@ Listing, and optionally deleting, branches already merged into the default branc
 ## Requirements
 
 ### Requirement: List merged branches
-`jef merged` SHALL fetch every selected repository (`git fetch --prune origin`) and list, per repository that has any, its merged local and remote (origin) branches under a repository header, as a `local:` line and a `remote:` line (names prefixed with `origin/`). A repository with merged branches counts as done in the summary and one without as skipped.
+`jef merged` SHALL fetch every selected repository (`git fetch --prune origin`) and list, per repository that has any, its merged local and remote (origin) branches as a bulleted block (see "Bulleted list format"). A repository with merged branches counts as done in the summary and one without as skipped.
 
 #### Scenario: Base branch
 - **WHEN** `origin/$DEFAULT_BRANCH` exists
@@ -15,6 +15,10 @@ Listing, and optionally deleting, branches already merged into the default branc
 #### Scenario: Ancestor-merged branches
 - **WHEN** a repository has local branch `feat-a` and origin branch `feat-a`, both already contained in the default branch
 - **THEN** both are listed under the repository
+
+#### Scenario: Listed per repository
+- **WHEN** repository `alpha` has merged local branches `feat-a` and `feat-b` and merged origin branch `feat-a`
+- **THEN** the output has the lines `alpha`, `  local`, `    - feat-a`, `    - feat-b`, `  remote` and `    - origin/feat-a`
 
 #### Scenario: Squash-merged branch
 - **WHEN** a branch with its own commit was squash-merged into the default branch on origin
@@ -35,6 +39,17 @@ Listing, and optionally deleting, branches already merged into the default branc
 #### Scenario: Old git
 - **WHEN** git is older than 2.38
 - **THEN** a single notice is printed and only the ancestor test is used
+
+### Requirement: Bulleted list format
+Branch lists (the listing, the `--delete` plan, the dry run and the deletion result) SHALL be bulleted blocks: the repository name on its own line, an indented `local` and/or `remote` label (only when that group has branches), then one `- <branch>` line per branch (remote names prefixed with `origin/`). Blocks are separated by a blank line, have no "Working directory" header, and a repository's problems are indented under its name. The plan, dry run and result indent the blocks by 2.
+
+#### Scenario: Colours
+- **WHEN** stdout is a terminal and `NO_COLOR` is unset
+- **THEN** names, labels, branches and the checked-out note use green, magenta, cyan and yellow; piped output contains no escape codes
+
+#### Scenario: Plain text when piped
+- **WHEN** stdout is not a terminal or `NO_COLOR` is set
+- **THEN** the same lines are printed without escape codes; on a terminal the repository name is green, the labels magenta, the branch names cyan and notes yellow (red for `(could not delete)`)
 
 ### Requirement: What counts as merged
 A branch SHALL count as merged when it is an ancestor of the base, or when merging it into the base would change nothing (squash and rebase merges). `$DEFAULT_BRANCH`, `origin/HEAD` and origin's HEAD branch SHALL never be listed.
@@ -106,12 +121,23 @@ A merged branch that is checked out SHALL be listed with the note `(checked out,
 - **WHEN** the user runs `jef merged -D -l -y`
 - **THEN** only local branches are deleted and origin is left untouched
 
+### Requirement: Deletion result list
+After deleting, `jef merged -D` SHALL print "Deleted merged branches:" followed by the plan's blocks: deleted branches plainly, the checked-out branch marked `(checked out, kept)` and branches that could not be deleted marked `(could not delete)`, with git's error output indented below. It SHALL NOT print per-branch "Deleted ..." lines.
+
+#### Scenario: Deleted list
+- **WHEN** the user runs `jef merged -D -y`, `alpha` has merged branch `feat` locally and on origin and `beta` has merged origin branch `other`
+- **THEN** after "Deleted merged branches:" the output shows `  alpha`, `    local`, `      - feat`, `    remote`, `      - origin/feat`, then `  beta`, `    remote`, `      - origin/other`
+
+#### Scenario: Remote refuses
+- **WHEN** origin rejects the deletion in `alpha`
+- **THEN** `      - origin/feat (could not delete)` is shown, the repository counts as failed and the exit status is 3
+
 ### Requirement: Dry run
-With `-D`, `-n`/`--dry-run` SHALL print "Would delete local branch X" and "Would delete remote branch X" lines, never prompt (even with `-y`) and change nothing.
+With `-D`, `-n`/`--dry-run` SHALL print "Would delete these merged branches:" followed by the same bulleted blocks as the listing (indented by 2, problems under the repository name, checked-out branches marked `(checked out, kept)`), never prompt (even with `-y`) and change nothing. It SHALL NOT print per-branch "Would delete" lines or "Working directory" headers. A repository with deletable branches counts as done, one with a failed fetch as failed, others as skipped.
 
 #### Scenario: Dry run with yes
-- **WHEN** the user runs `jef merged -D -n -y`
-- **THEN** only "Would delete" lines are printed and no branch is removed
+- **WHEN** the user runs `jef merged -D -n -y` and `alpha` has merged branch `feat` locally and on origin
+- **THEN** the output has `Would delete these merged branches:`, `  alpha`, `    local`, `      - feat`, `    remote`, `      - origin/feat`, no question is asked and no branch is removed
 
 ### Requirement: Repeatable list flags
 Value flags of type `list` in the shared option parser SHALL accumulate: each repeated occurrence (`-m a`, `--repo b`, `--repo=c`) SHALL be appended to the value, separated by a space.

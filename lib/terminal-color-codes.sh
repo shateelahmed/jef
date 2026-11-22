@@ -4,10 +4,14 @@
 green=""
 yellow=""
 red=""
+magenta=""
+cyan=""
 reset=""
 if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then
     green=$(tput setaf 2 2> /dev/null) || green=""
     yellow=$(tput setaf 3 2> /dev/null) || yellow=""
     red=$(tput setaf 1 2> /dev/null) || red=""
+    magenta=$(tput setaf 5 2> /dev/null) || magenta=""
+    cyan=$(tput setaf 6 2> /dev/null) || cyan=""
     reset=$(tput sgr0 2> /dev/null) || reset=""
 fi
