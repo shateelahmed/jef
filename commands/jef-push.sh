@@ -41,7 +41,7 @@ echo "Dry run: ${green}$dry_run${reset}"
 source "$script_location/lib/clear-proxy.sh"
 
 push_repo() {
-    local child_directory="$1" current_branch
+    local child_directory="$1" current_branch local_sha remote_output remote_sha push_count=""
 
     if ! git -C "$child_directory" show-ref --verify --quiet "refs/heads/$branch_to_push"; then
         mark_repo_skipped
@@ -50,11 +50,48 @@ push_repo() {
 
     print_repo_header "$child_directory"
 
+    local_sha=$(git -C "$child_directory" rev-parse "refs/heads/$branch_to_push")
+    if ! remote_output=$(git -C "$child_directory" ls-remote origin "refs/heads/$branch_to_push" 2> /dev/null); then
+        echo "Could not reach origin"
+        mark_repo_failed
+        return
+    fi
+    remote_sha="${remote_output%%[[:space:]]*}"
+
+    if [ -z "$remote_sha" ]; then
+        : # not on origin yet: push it
+    elif [ "$remote_sha" = "$local_sha" ]; then
+        echo "Nothing to push"
+        if ! $dry_run; then
+            set_upstream_if_missing "$child_directory"
+        fi
+        mark_repo_skipped
+        return
+    elif git -C "$child_directory" cat-file -e "$remote_sha^{commit}" 2> /dev/null; then
+        if git -C "$child_directory" merge-base --is-ancestor "$remote_sha" "$local_sha"; then
+            push_count=$(git -C "$child_directory" rev-list --count "$remote_sha..$local_sha")
+        elif git -C "$child_directory" merge-base --is-ancestor "$local_sha" "$remote_sha"; then
+            echo "Nothing to push (behind origin)"
+            mark_repo_skipped
+            return
+        fi
+    fi # otherwise diverged or unknown remote tip: let git decide
+
+    if [ -n "$push_count" ]; then
+        if [ "$push_count" = 1 ]; then
+            push_count="1 commit"
+        else
+            push_count="$push_count commits"
+        fi
+    fi
+
     if $dry_run; then
         echo "Would push $branch_to_push to origin"
+        [ -n "$push_count" ] && echo "Would push $push_count"
         mark_repo_done
         return
     fi
+    [ -n "$push_count" ] && echo "Pushing $push_count"
 
     current_branch=$(git -C "$child_directory" branch --show-current)
     if [ "$current_branch" != "$branch_to_push" ]; then  # if the current git branch is not "$branch_to_push"
@@ -71,6 +108,15 @@ push_repo() {
         mark_repo_done
     else
         mark_repo_failed
+    fi
+}
+
+# Keep the old "push -u" effect when nothing needs pushing: track origin/<branch> if unset.
+set_upstream_if_missing() {
+    local child_directory="$1"
+    if [ -z "$(git -C "$child_directory" config "branch.$branch_to_push.remote")" ] \
+        && git -C "$child_directory" show-ref --verify --quiet "refs/remotes/origin/$branch_to_push"; then
+        git -C "$child_directory" branch --set-upstream-to="origin/$branch_to_push" "$branch_to_push" > /dev/null 2>&1 || true
     fi
 }
 
