@@ -74,7 +74,7 @@ setup() { setup_workspace; }
     run_cmd which -d "$WS"
     [ -z "$(table_row skipme)" ]
     [ -z "$(table_row gamma)" ]
-    printf "SKIP_DIRS='skipme beta'\n" > "$JEF_HOME/.env"
+    printf "SKIP_DIRS='skipme,beta'\n" > "$JEF_HOME/.env"
     run_cmd which -d "$WS"
     [ -z "$(table_row skipme)" ]
     [ -z "$(table_row beta)" ]

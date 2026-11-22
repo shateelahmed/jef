@@ -20,15 +20,39 @@ run_spec() {
     run_cmd "$cmd" "$@" ${args//,/ }
 }
 
-@test "SKIP_DIRS: comma separated, space separated and mixed lists" {
+@test "SKIP_DIRS: comma separated lists, whitespace around entries and empty entries are fine" {
     local list
-    for list in "skipme,gamma" "skipme gamma" "skipme, gamma"; do
+    for list in "skipme,gamma" "skipme, gamma" " skipme ,,gamma, " $'\tskipme\t,gamma,'; do
         write_env "" "$list" "main"
         run_cmd which -d "$WS"
         [ -z "$(table_row skipme)" ]
         [ -z "$(table_row gamma)" ]
         [ -n "$(table_row alpha)" ]
     done
+}
+
+@test "SKIP_DIRS: an entry containing spaces exits 2 before any repository is touched" {
+    add_local_branch alpha feat
+    add_local_branch skipme feat
+    write_env "" "skipme gamma" "main"
+    run_cmd delete -d "$WS" feat
+    assert_status 2
+    assert_contains "Invalid SKIP_DIRS: 'skipme gamma' contains spaces; separate entries with commas"
+    g alpha show-ref --quiet --heads feat
+    g skipme show-ref --quiet --heads feat
+    refute_contains "Working directory"
+    local spec
+    for spec in $SPECS; do
+        run_spec "$spec" -d "$WS"
+        assert_status 2
+    done
+}
+
+@test "SKIP_DIRS: --help still works with an invalid value" {
+    write_env "" "skipme gamma" "main"
+    run_cmd delete --help
+    assert_status 0
+    assert_contains "Usage: jef delete"
 }
 
 @test "SKIP_DIRS: empty list skips nothing and matches whole names only" {

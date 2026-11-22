@@ -155,15 +155,19 @@ Value flags of type `list` in the shared option parser SHALL accumulate: each re
 - **THEN** the repository filter is `alpha beta`
 
 ### Requirement: Protected branches
-Branches matching `PROTECTED_BRANCHES` (comma or space separated names or glob patterns, from `.env`) SHALL never be listed or deleted, locally or on origin. The default branch and origin's HEAD branch SHALL always be protected. The patterns SHALL NOT be expanded against files. The banner SHALL show `Protected: <list>` or `Protected: default branch only`.
+Branches matching `PROTECTED_BRANCHES` (comma separated names or glob patterns, from `.env`) SHALL never be listed or deleted, locally or on origin. The default branch and origin's HEAD branch SHALL always be protected. Patterns SHALL NOT be expanded against files. An entry containing whitespace SHALL be an error (exit 2) before any work. The banner SHALL show `Protected: <entries joined by ", ">` or `Protected: default branch only`.
 
 #### Scenario: Names and patterns
 - **WHEN** `PROTECTED_BRANCHES="dev, release/*"` and a repository has merged branches `dev`, `release/1.0` and `feat`
-- **THEN** only `feat` is listed and deleted
+- **THEN** only `feat` is listed and deleted, and the banner shows `Protected: dev, release/*`
 
 #### Scenario: No expansion
 - **WHEN** `PROTECTED_BRANCHES=qa*` and the current directory contains a file `qa-file`
 - **THEN** a branch `qa-two` is still protected
+
+#### Scenario: Space separated list rejected
+- **WHEN** `PROTECTED_BRANCHES="dev qa"` and the user runs `jef merged -D -y`
+- **THEN** it prints `Invalid PROTECTED_BRANCHES: 'dev qa' contains spaces; separate entries with commas`, exits 2 and nothing is deleted
 
 ### Requirement: Branches without own commits
 A merged branch whose tip is on the first-parent history of the base SHALL be listed with the note `(no commits, kept)` and SHALL NOT be deleted, unless `--delete` is combined with the long-only flag `--include-empty`. Only branches that are ancestors of the base SHALL be checked; squash and rebase merged branches are never empty.

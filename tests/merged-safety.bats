@@ -77,10 +77,10 @@ EOF
     merged_remote_branch alpha release/1.0
     merged_remote_branch alpha release/2.0
     merged_remote_branch alpha feat
-    write_protected "dev, release/*"
+    write_protected " dev ,, release/* ,"
     run_cmd merged -d "$WS"
     assert_status 0
-    assert_contains "Protected: dev release/*"
+    assert_contains "Protected: dev, release/*"
     assert_line_is "    - qa"
     assert_line_is "    - origin/feat"
     refute_contains "- dev"
@@ -95,6 +95,25 @@ EOF
     origin_has_branch alpha dev
     g alpha show-ref --quiet --heads release/1.0
     origin_has_branch alpha release/2.0
+}
+
+@test "merged: a PROTECTED_BRANCHES entry containing spaces exits 2 and changes nothing" {
+    merged_remote_branch alpha dev
+    merged_remote_branch alpha qa
+    write_protected "dev qa"
+    run_cmd merged -D -y -d "$WS"
+    assert_status 2
+    assert_contains "Invalid PROTECTED_BRANCHES: 'dev qa' contains spaces; separate entries with commas"
+    g alpha show-ref --quiet --heads dev
+    g alpha show-ref --quiet --heads qa
+    origin_has_branch alpha dev
+    origin_has_branch alpha qa
+}
+
+@test "merged: --help still works with an invalid PROTECTED_BRANCHES" {
+    write_protected "dev qa"
+    run_cmd merged --help
+    assert_status 0
 }
 
 @test "merged: without PROTECTED_BRANCHES only the default branch is protected" {

@@ -26,8 +26,8 @@ Checkout the following scenario. You have a project `amazing` that contains 10 m
 - Update the envs to your need in the `.env` file.
     - `TARGET_DIR`: Set absolute path to the directory where you want to run jef in by default.
     - `DEFAULT_BRANCH`: Set default branch (eg. `master`, `main`) for your repository.
-    - `PROTECTED_BRANCHES`: Comma and/or space separated branch names or glob patterns (eg. `dev qa staging uat release/*`) that `jef merged` never lists or deletes. `DEFAULT_BRANCH` and the branch origin's HEAD points to are always protected.
-    - `SKIP_DIRS`: Comma and/or space separated list of directory names to skip in all commands (eg. `archived, playground`).
+    - `PROTECTED_BRANCHES`: Comma separated branch names or glob patterns (eg. `dev,qa,staging,uat,release/*`) that `jef merged` never lists or deletes. `DEFAULT_BRANCH` and the branch origin's HEAD points to are always protected.
+    - `SKIP_DIRS`: Comma separated list of directory names to skip in all commands (eg. `archived,playground`). Whitespace around entries is ignored; an entry containing spaces (eg. `a b`) is an error (exit 2) in both keys.
     - `MIGRATE_CMDS`: Only for `jef migrate`. `<repository directory name>:<command>` entries separated by `;` (eg. `MIGRATE_CMDS="order-service:docker exec order-app php artisan migrate --force; user-service:docker exec user-app npm run migrate"`). A `;` inside single or double quotes belongs to the command (eg. `api:docker exec api-app sh -c "php artisan migrate --force; php artisan db:seed --force"`); otherwise use `&&`.
     - `.env` is read as plain `KEY=VALUE` lines (blank lines and `#` comments are ignored, one pair of surrounding quotes is removed). It is never executed as shell code. Only a leading `~` (alone or followed by `/`), `$HOME` or `${HOME}` in a value is expanded, to the value of `HOME` (eg. `TARGET_DIR=~/code`); `$OTHER_VAR`, `~user`, `$(...)` and `$HOME` in the middle of a value are kept literally.
 - Run `./install.sh`. It copies only `commands/`, `lib/` and your `.env` (if present in the clone) to `~/.jef`, and makes `jef` and `jef-*` available as commands.

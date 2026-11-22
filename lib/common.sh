@@ -5,10 +5,11 @@
 # find and which source it) and lib/clear-proxy.sh (must run after the banner).
 # shellcheck disable=SC2154 # script_location is set by the sourcing command
 source "$script_location/lib/load-env.sh"
+source "$script_location/lib/env-list.sh"
+source "$script_location/lib/skip-directory.sh" # validates SKIP_DIRS: exits 2 on a bad value
 source "$script_location/lib/target-directory.sh"
 source "$script_location/lib/verify-git-repo.sh"
 source "$script_location/lib/directory-name.sh"
-source "$script_location/lib/skip-directory.sh"
 source "$script_location/lib/terminal-color-codes.sh"
 source "$script_location/lib/max-length.sh"
 source "$script_location/lib/repos.sh"

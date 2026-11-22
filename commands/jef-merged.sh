@@ -46,17 +46,14 @@ elif $only_remote && ! $only_local; then
     want_local=false
 fi
 
-# Protected branches: PROTECTED_BRANCHES (comma or space separated names or glob patterns) are never
+# Protected branches: PROTECTED_BRANCHES (comma separated names or glob patterns) are never
 # listed or deleted; the default branch and origin's HEAD branch always are protected.
-set -f # the patterns are split on spaces below and must not be matched against files
-protected_patterns=()
-for protected_pattern in ${PROTECTED_BRANCHES//,/ }; do
-    protected_patterns+=("$protected_pattern")
-done
-set +f
+# An entry containing spaces (the old space separated form) is an error: exit 2 before any work.
+parse_env_list PROTECTED_BRANCHES "$PROTECTED_BRANCHES" || exit 2
+protected_patterns=("${env_list_items[@]}")
 protected_text="default branch only"
 if [ "${#protected_patterns[@]}" -gt 0 ]; then
-    protected_text="${protected_patterns[*]}"
+    protected_text="$(IFS=,; echo "${protected_patterns[*]}" | sed 's/,/, /g')"
 fi
 
 # --include-empty only matters when deleting
