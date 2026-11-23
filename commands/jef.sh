@@ -15,6 +15,7 @@ print_commands() {
     printf "  %-10s %s\n" "pull" "Fetch and pull a branch in every repository whose remote has it"
     printf "  %-10s %s\n" "push" "Push a branch to origin in every repository that has it locally"
     printf "  %-10s %s\n" "rebase" "Rebase one branch onto another in every repository that has both"
+    printf "  %-10s %s\n" "sync" "Pull the default branch and bring it into every other local branch, in every repository"
     printf "  %-10s %s\n" "which" "Show the currently checked out branch of each repository"
     printf "  %-10s %s\n" "help" "Show this list, or 'jef help <command>' for a command's options"
     echo

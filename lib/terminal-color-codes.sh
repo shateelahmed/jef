@@ -6,6 +6,7 @@ yellow=""
 red=""
 magenta=""
 cyan=""
+dim=""
 reset=""
 if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then
     green=$(tput setaf 2 2> /dev/null) || green=""
@@ -13,5 +14,6 @@ if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then
     red=$(tput setaf 1 2> /dev/null) || red=""
     magenta=$(tput setaf 5 2> /dev/null) || magenta=""
     cyan=$(tput setaf 6 2> /dev/null) || cyan=""
+    dim=$(tput dim 2> /dev/null) || dim=""
     reset=$(tput sgr0 2> /dev/null) || reset=""
 fi

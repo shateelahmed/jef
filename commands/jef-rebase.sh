@@ -83,22 +83,6 @@ commit_text() { # commit_text <count>
     fi
 }
 
-# Succeeds when a rebase is in progress in the repository $1 (so it can be aborted).
-rebase_in_progress() {
-    local name path
-    for name in rebase-merge rebase-apply; do
-        path=$(git -C "$1" rev-parse --git-path "$name" 2> /dev/null) || continue
-        case "$path" in
-        /*) ;;
-        *) path="$1/$path" ;;
-        esac
-        if [ -d "$path" ]; then
-            return 0
-        fi
-    done
-    return 1
-}
-
 rebase_repo() { # rebase_repo <index>
     local index="$1" directory="${repo_list[$1]}" current_branch
     local count="${plan_count[$1]}"

@@ -74,12 +74,29 @@ require_branches_somewhere() {
     return 0
 }
 
+# Succeeds when a rebase is in progress in the repository $1 (so it can be aborted).
+rebase_in_progress() {
+    local name path
+    for name in rebase-merge rebase-apply; do
+        path=$(git -C "$1" rev-parse --git-path "$name" 2> /dev/null) || continue
+        case "$path" in
+        /*) ;;
+        *) path="$1/$path" ;;
+        esac
+        if [ -d "$path" ]; then
+            return 0
+        fi
+    done
+    return 1
+}
+
 # Run a worker for every repository, at most $2 at a time (bash 3.2 safe: no wait -n).
 #
 # The worker runs in a background subshell, receives the child directory path, writes
 # its output to stdout/stderr and returns 0 (done), 1 (failed) or 2 (skipped).
 # When this returns, repo_list holds the repositories and, for repository number i,
 # $parallel_dir/$i.out holds its output and $parallel_dir/$i.rc its exit status.
+# list_repos is called first, unless parallel_use_repo_list is true (the caller has narrowed repo_list).
 # The temp dir is removed (and unfinished jobs are killed) by an EXIT trap, which
 # does not interfere with the INT/TERM traps of lib/spinner.sh.
 #
@@ -91,7 +108,9 @@ parallel_run() {
     repos_done=0
     repos_failed=0
     repos_skipped=0
-    list_repos
+    if [ "${parallel_use_repo_list:-false}" != true ]; then
+        list_repos
+    fi
     n=${#repo_list[@]}
     parallel_dir="$(mktemp -d "${TMPDIR:-/tmp}/jef.XXXXXX")" || exit 1
     parallel_pids=()
