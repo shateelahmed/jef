@@ -157,6 +157,7 @@ rebase_repo() { # rebase_repo <index>
 
 # Plan phase: the only place that queries the repositories (read-only), once each.
 list_repos
+require_branches_somewhere "$branch_to_rebase" "$onto_branch"
 repos_done=0
 repos_failed=0
 repos_skipped=0

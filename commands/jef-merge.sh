@@ -46,6 +46,9 @@ echo "Dry run: ${green}$dry_run${reset}"
 
 source "$script_location/lib/clear-proxy.sh"
 
+list_repos
+require_branches_somewhere "$source_branch" "$target_branch"
+
 merge_repo() {
     local child_directory="$1" current_branch
 

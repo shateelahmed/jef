@@ -40,6 +40,40 @@ list_repos() {
     done
 }
 
+# Succeed when at least one repository in repo_list has the local branch $1.
+# Call list_repos first.
+#
+# Args:
+#   $1 (string): Branch name.
+branch_in_any_repo() {
+    local directory
+    for directory in "${repo_list[@]}"; do
+        if git -C "$directory" show-ref --verify --quiet "refs/heads/$1"; then
+            return 0
+        fi
+    done
+    return 1
+}
+
+# Print "Branch '<name>' does not exist in any repository" for every name that no repository
+# in repo_list has as a local branch, then exit 2 (nothing has been changed yet). Call list_repos first.
+#
+# Args:
+#   $@ (string): Branch names.
+require_branches_somewhere() {
+    local name missing=false
+    for name in "$@"; do
+        if ! branch_in_any_repo "$name"; then
+            echo "Branch '$name' does not exist in any repository"
+            missing=true
+        fi
+    done
+    if $missing; then
+        exit 2
+    fi
+    return 0
+}
+
 # Run a worker for every repository, at most $2 at a time (bash 3.2 safe: no wait -n).
 #
 # The worker runs in a background subshell, receives the child directory path, writes

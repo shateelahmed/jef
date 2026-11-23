@@ -52,13 +52,12 @@ rebase_in_progress() {
 
 @test "rebase: repos lacking either branch are skipped silently" {
     add_local_branch alpha feat
-    run_cmd rebase -y -d "$WS" feat nonexistent
+    add_local_branch beta other        # each branch exists somewhere, but no repo has both
+    run_cmd rebase -y -d "$WS" feat other
     assert_status 0
     refute_contains "Working directory"
     refute_contains "Will rebase"
     assert_contains "Summary: 0 done, 0 failed, 3 skipped"
-    run_cmd rebase -y -d "$WS" nonexistent main
-    refute_contains "Working directory"
 }
 
 @test "rebase: a branch that already contains onto is skipped and not checked out" {
@@ -204,8 +203,55 @@ rebase_in_progress() {
 }
 
 @test "rebase: nothing to rebase asks nothing, even without a terminal" {
+    add_local_branch alpha feat
     run_cmd rebase -d "$WS" feat main < /dev/null
     assert_status 0
+}
+
+@test "rebase: a branch that exists in no repository exits 2 before any plan" {
+    diverge alpha feat main
+    local before
+    before=$(g alpha rev-parse feat)
+    run_cmd rebase -y -d "$WS" feat nosuch
+    assert_status 2
+    assert_contains "Branch 'nosuch' does not exist in any repository"
+    refute_contains "Branch 'feat' does not exist"
+    refute_contains "Will rebase"
+    [ "$(current_branch alpha)" = main ]
+    [ "$(g alpha rev-parse feat)" = "$before" ]
+    run_cmd rebase -y -d "$WS" nosuch main
+    assert_status 2
+    assert_contains "Branch 'nosuch' does not exist in any repository"
+    refute_contains "Branch 'main' does not exist"
+}
+
+@test "rebase: both branches missing everywhere print both lines" {
+    run_cmd rebase -y -d "$WS" nosuch1 nosuch2
+    assert_status 2
+    assert_contains "Branch 'nosuch1' does not exist in any repository"
+    assert_contains "Branch 'nosuch2' does not exist in any repository"
+}
+
+@test "rebase: a branch missing everywhere exits 2 with --dry-run, --yes and without a terminal, asking nothing" {
+    diverge alpha feat main
+    run_cmd rebase -n -d "$WS" feat nosuch
+    assert_status 2
+    assert_contains "Branch 'nosuch' does not exist in any repository"
+    run_cmd rebase -y -d "$WS" feat nosuch < /dev/null
+    assert_status 2
+    run_cmd rebase -d "$WS" feat nosuch < /dev/null
+    assert_status 2
+    assert_contains "Branch 'nosuch' does not exist in any repository"
+    refute_contains "[y/N]"
+    refute_contains "Not running in a terminal"
+}
+
+@test "rebase: a branch that exists only on origin counts as absent" {
+    diverge alpha feat main
+    g alpha push -q origin main:onlyremote
+    run_cmd rebase -y -d "$WS" feat onlyremote
+    assert_status 2
+    assert_contains "Branch 'onlyremote' does not exist in any repository"
 }
 
 @test "rebase: requires exactly two arguments" {
