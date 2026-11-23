@@ -125,10 +125,21 @@ _repoint_origin() {
 # it early (or answering before the prompt) let script end the session before
 # the command finished. Sets $status and $output like run.
 run_tty() {
+    local answer="$1"
+    shift
+    run_tty_keys '\[y/N\]' "${answer//\\/\\\\}\n" "$@"
+}
+
+# run_tty_keys <pattern> <keys> <command> [args...]: like run_tty, but waits for the
+# grep pattern <pattern> in the terminal log and then types <keys>, which printf %b
+# expands (\n is Enter, \033[B the Down arrow, a literal space is Space), e.g. for the
+# repository picker: run_tty_keys 'Select repositories' '\033[B \n' jef-checkout ...
+run_tty_keys() {
     command -v script > /dev/null 2>&1 || skip "script(1) not available to fake a terminal"
     local arg
-    TTY_ANSWER="$1"
-    shift
+    TTY_PATTERN="$1"
+    TTY_KEYS="$2"
+    shift 2
     TTY_LOG="$BATS_TEST_TMPDIR/tty.log"
     TTY_DONE="$BATS_TEST_TMPDIR/tty.done"
     rm -f "$TTY_LOG" "$TTY_DONE"
@@ -140,15 +151,15 @@ run_tty() {
     run _tty_session
 }
 
-# _tty_feed: wait for the prompt (up to 15 s), answer, then keep stdin open
+# _tty_feed: wait for the pattern (up to 15 s), type the keys, then keep stdin open
 # until the command has finished (up to 30 s).
 _tty_feed() {
     local i=0
-    until grep -q '\[y/N\]' "$TTY_LOG" 2> /dev/null || [ "$i" -ge 300 ]; do
+    until grep -q "$TTY_PATTERN" "$TTY_LOG" 2> /dev/null || [ "$i" -ge 300 ]; do
         sleep 0.05
         i=$((i + 1))
     done
-    printf '%s\n' "$TTY_ANSWER"
+    printf '%b' "$TTY_KEYS"
     i=0
     until [ -e "$TTY_DONE" ] || [ "$i" -ge 600 ]; do
         sleep 0.05

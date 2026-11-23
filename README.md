@@ -50,7 +50,7 @@ Your `.env` lives in the repository clone, so no `.env` migration is needed.
 
 ## Usage
 - Run `jef help` (or `jef`, `jef -h`, `jef --help`) to list the commands, `jef help <command>` or `jef <command> --help` to see a command's options. An unknown command exits with `127`.
-- Run `jef checkout <branch_name>` to checkout to a specific branch
+- Run `jef checkout <branch_name>` to checkout to a specific branch. Run `jef checkout -b <new_branch> <base>` to create `<new_branch>` from `<base>` (a branch, tag or commit; a branch that exists only on `origin` is used as `origin/<base>`) and check it out in the repositories you pick: a checkbox list is shown (Up/Down or `k`/`j` move, Space ticks, `a` ticks all, Enter confirms, `q` or Esc cancels; repositories that already have the branch or lack the base are listed but cannot be ticked; if none can, nothing is shown to pick and the command exits `1`). Add `-m`/`--repo alpha,beta` to name the repositories instead (required when there is no terminal)
 - Run `jef delete <branch_name>` to delete a branch locally. Add `-r` before the `<branch_name>` to delete the branch from remote. It first prints what will be deleted in each repository (local, remote or both) and asks for confirmation; add `-y` to skip the question (required when there is no terminal, e.g. in scripts). Example:
 
   ```
@@ -96,7 +96,7 @@ Commands and flags (all accept `-d`/`--directory <dir>` to override `TARGET_DIR`
 
 | Command | Arguments | Extra flags |
 | --- | --- | --- |
-| `jef checkout` | `<branch>` | |
+| `jef checkout` | `<branch>`, or `-b <new_branch> <base>` | `-b`/`--new`, `-m`/`--repo REPOS` (only with `-b`) |
 | `jef delete` | `<branch>` | `-c`/`--clear-proxy`, `-r`/`--delete-remote-branch`, `-n`/`--dry-run`, `-y`/`--yes` |
 | `jef fetch` | | `-c`/`--clear-proxy`, `-j`/`--jobs N` |
 | `jef find` | `<branch>` | `-c`/`--clear-proxy`, `-j`/`--jobs N` |
