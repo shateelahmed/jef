@@ -124,6 +124,9 @@ parse_options() {
         esac
     done
 
+    # With no arguments left (e.g. only a long-only flag was given), getopts must not run: given
+    # no words it would parse this function's own "$@" and report "unknown option '--'".
+    [ ${#args[@]} -eq 0 ] && args=("--")
     while getopts "$optstring" opt "${args[@]}"; do
         case "$opt" in
         d) target_directory="$OPTARG" ;;

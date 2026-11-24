@@ -131,3 +131,11 @@ COMMANDS="checkout delete fetch find merge merged migrate pull push rebase which
     assert_status 0
     refute_contains "no commits"
 }
+
+@test "long-only flag: works as the only argument (stash --clear)" {
+    write_env "$WS" "skipme" "main" # no -d: --clear must be the only argument
+    run_cmd stash --clear
+    assert_status 0
+    refute_contains "unknown option"
+    assert_contains "No stashes to clear"
+}
