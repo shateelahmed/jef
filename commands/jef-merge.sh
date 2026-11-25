@@ -20,11 +20,69 @@ cli_name="merge"
 cli_description="Merge one branch into another in every repository that has both"
 cli_positionals="<source_branch> <destination_branch>"
 cli_accepts_proxy=true
-cli_extra_flags=("n|dry-run|dry_run|Show what would happen without changing anything")
+cli_extra_flags=(
+    "n|dry-run|dry_run|Show what would happen without changing anything"
+    "|abort|abort|Abort the merge in progress in every repository (takes no branches)"
+)
 parse_options "$@"
-require_args 2
+if $abort; then
+    if [ "${#cli_positional[@]}" -gt 0 ]; then
+        usage_error "--abort takes no branch arguments"
+    fi
+else
+    require_args 2
+fi
 
 source "$script_location/lib/common.sh"
+
+if $abort; then
+    echo "Target directory: ${green}$target_directory${reset}"
+    echo "Action: ${green}abort${reset}"
+    echo "Dry run: ${green}$dry_run${reset}"
+
+    source "$script_location/lib/clear-proxy.sh"
+
+    list_repos
+    any_merge=false
+    for child_directory in "${repo_list[@]}"; do
+        if git -C "$child_directory" rev-parse -q --verify MERGE_HEAD >/dev/null; then
+            any_merge=true
+        fi
+    done
+    if ! $any_merge; then
+        echo
+        echo "No merge in progress"
+        exit 0
+    fi
+
+    abort_repo() {
+        local child_directory="$1"
+        if ! git -C "$child_directory" rev-parse -q --verify MERGE_HEAD >/dev/null; then
+            mark_repo_skipped
+            return # no merge in progress here
+        fi
+
+        print_repo_header "$child_directory"
+
+        if $dry_run; then
+            echo "Would abort the merge"
+            mark_repo_done
+            return
+        fi
+
+        if git -C "$child_directory" merge --abort; then
+            echo "Aborted the merge"
+            mark_repo_done
+        else
+            echo "${red}Could not abort the merge${reset}"
+            mark_repo_failed
+        fi
+    }
+
+    for_each_repo abort_repo
+    finish_run
+    exit 0
+fi
 
 source_branch="${cli_positional[0]}"
 target_branch="${cli_positional[1]}"

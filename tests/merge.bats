@@ -74,3 +74,82 @@ setup() { setup_workspace; }
     run_cmd merge -d "$WS"
     assert_contains "2 arguments required. 0 provided"
 }
+
+# make_conflict <repo>: leaves a conflicted merge of feat into main in the repository (both change file.txt)
+make_conflict() {
+    g "$1" checkout -q -b feat
+    echo "feat $RANDOM" > "$WS/$1/file.txt"
+    g "$1" commit -q -am "feat"
+    g "$1" checkout -q main
+    echo "main $RANDOM" > "$WS/$1/file.txt"
+    g "$1" commit -q -am "main"
+    g "$1" merge -q feat > /dev/null 2>&1 || true
+}
+
+@test "merge --abort: aborts the conflicted merge in alpha, leaves beta alone and exits 0" {
+    make_conflict alpha
+    local head_before
+    head_before=$(g alpha rev-parse HEAD)
+    run_cmd merge --abort -d "$WS"
+    assert_status 0
+    assert_contains "Action: abort"
+    assert_contains "Working directory alpha"
+    assert_contains "Aborted the merge"
+    assert_contains "1 done, 0 failed, 2 skipped"
+    refute_contains "Working directory beta"
+    [ -z "$(g alpha rev-parse -q --verify MERGE_HEAD)" ]
+    [ -z "$(g alpha status --porcelain)" ]
+    [ "$(g alpha rev-parse HEAD)" = "$head_before" ]
+    refute grep -q "<<<<<<<" "$WS/alpha/file.txt"
+}
+
+@test "merge --abort: prints No merge in progress and exits 0 when no repository has a merge" {
+    run_cmd merge --abort -d "$WS"
+    assert_status 0
+    assert_contains "Action: abort"
+    assert_contains "No merge in progress"
+    refute_contains "Working directory"
+}
+
+@test "merge --abort -n: prints Would abort the merge and keeps the merge in progress" {
+    make_conflict alpha
+    run_cmd merge --abort -n -d "$WS"
+    assert_status 0
+    assert_contains "Dry run: true"
+    assert_contains "Working directory alpha"
+    assert_contains "Would abort the merge"
+    assert_contains "1 done, 0 failed, 2 skipped"
+    refute_contains "Aborted the merge"
+    [ -n "$(g alpha rev-parse -q --verify MERGE_HEAD)" ]
+}
+
+@test "merge --abort: a failing abort is reported, the others are still aborted, exit 3" {
+    make_conflict alpha
+    make_conflict beta
+    # A stale index.lock makes git merge --abort fail (it resets the index); MERGE_HEAD stays.
+    touch "$WS/alpha/.git/index.lock"
+    run_cmd merge --abort -d "$WS"
+    assert_status 3
+    assert_contains "Working directory alpha"
+    assert_contains "Could not abort the merge"
+    assert_contains "Working directory beta"
+    assert_contains "Aborted the merge"
+    assert_contains "1 done, 1 failed, 1 skipped"
+    [ -n "$(g alpha rev-parse -q --verify MERGE_HEAD)" ]
+    [ -z "$(g beta rev-parse -q --verify MERGE_HEAD)" ]
+}
+
+@test "merge --abort: branch arguments are a usage error (exit 2) and change nothing" {
+    make_conflict alpha
+    run_cmd merge --abort -d "$WS" feat main
+    assert_status 2
+    assert_contains "--abort takes no branch arguments"
+    refute_contains "Working directory"
+    [ -n "$(g alpha rev-parse -q --verify MERGE_HEAD)" ]
+}
+
+@test "merge --help lists --abort" {
+    run_cmd merge --help
+    assert_status 0
+    assert_contains "    --abort"
+}
