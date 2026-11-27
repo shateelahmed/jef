@@ -6,7 +6,7 @@ setup_file() { build_fixture_template; }
 
 setup() { setup_workspace; }
 
-COMMANDS="checkout delete fetch find merge merged migrate pull push rebase status which"
+COMMANDS="checkout delete exec fetch find merge merged migrate pull push rebase status which"
 
 @test "--help: every command prints usage and exits 0, even with no target directory" {
     local cmd
@@ -142,13 +142,14 @@ COMMANDS="checkout delete fetch find merge merged migrate pull push rebase statu
 
 # -m/--repo (lib/repos.sh): every repository command accepts it
 
-REPO_COMMANDS="checkout delete fetch find merge merged migrate pull push rebase stash status sync which"
+REPO_COMMANDS="checkout delete exec fetch find merge merged migrate pull push rebase stash status sync which"
 
 # repo_positionals <command>: the positional arguments a command needs, so that only -m is checked.
 repo_positionals() {
     case "$1" in
     checkout | delete | find | pull | push) echo feat ;;
     merge | rebase) echo "feat main" ;;
+    exec) echo true ;;
     *) ;;
     esac
 }
@@ -195,4 +196,77 @@ repo_positionals() {
     run_cmd fetch -d "$WS" -m "alpha,nosuch"
     assert_status 2
     assert_contains "unknown repository 'nosuch'"
+}
+
+# cli_pass_through (lib/cli.sh): parse_options on its own, with a few value and boolean flags.
+
+pass_through_parse() {
+    "$JEF_BASH" -c '
+        source "$1"; shift
+        cli_name=test
+        cli_pass_through=true
+        cli_extra_flags=("n|dry-run|dry_run|Dry")
+        cli_value_flags=("j|jobs|parallel_jobs|N|1|posint|Jobs" "b|branch|branch_filter|BRANCH||string|Branch")
+        parse_options "$@"
+        echo "pos=$(printf "%s;" "${cli_positional[@]}") dry=$dry_run jobs=$parallel_jobs branch=$branch_filter"
+    ' _ "$JEF_HOME/lib/cli.sh" "$@"
+}
+
+@test "cli_pass_through: jef words before the command are parsed, the command is kept whole" {
+    run pass_through_parse -n -j 4 git log -1 -n
+    assert_status 0
+    assert_contains "pos=git;log;-1;-n; dry=true jobs=4 branch="
+}
+
+@test "cli_pass_through: -- is dropped and ends jef's options" {
+    run pass_through_parse -b dev -- -n x
+    assert_status 0
+    assert_contains "pos=-n;x; dry=false jobs=1 branch=dev"
+}
+
+@test "cli_pass_through: attached values, clusters and --long=value" {
+    run pass_through_parse -j2 echo -j
+    assert_status 0
+    assert_contains "pos=echo;-j; dry=false jobs=2"
+    run pass_through_parse -nj3 ls
+    assert_contains "pos=ls; dry=true jobs=3"
+    run pass_through_parse --jobs=5 --branch=main ls -b
+    assert_contains "pos=ls;-b; dry=false jobs=5 branch=main"
+}
+
+@test "cli_pass_through: a value flag takes the next word even when it looks like an option" {
+    run pass_through_parse -b -n ls
+    assert_status 0
+    assert_contains "pos=ls; dry=false jobs=1 branch=-n"
+}
+
+@test "cli_pass_through: -h before the command is help, after it is the command's" {
+    run pass_through_parse -h git
+    assert_status 0
+    assert_contains "Usage: jef test"
+    run pass_through_parse git -h
+    assert_status 0
+    assert_contains "pos=git;-h;"
+    refute_contains "Usage: jef test"
+}
+
+@test "cli_pass_through: an unknown option before the command is still unknown (exit 2)" {
+    run pass_through_parse -z git
+    assert_status 2
+    assert_contains "unknown option '-z'"
+}
+
+@test "cli_pass_through: no words at all gives no positionals" {
+    run pass_through_parse
+    assert_status 0
+    assert_contains "pos=; dry=false jobs=1 branch="
+}
+
+@test "without cli_pass_through, -h and -- are still parsed for every other command" {
+    run_cmd push feat -h
+    assert_status 0
+    assert_contains "Usage: jef push [options] <branch>"
+    run_cmd merge -d "$WS" -- onlyone
+    assert_status 2
+    assert_contains "2 arguments required. 1 provided"
 }

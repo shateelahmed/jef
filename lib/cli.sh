@@ -18,6 +18,13 @@
 #                      e.g. "m|repo|repo_filter|REPOS||list|Only these repositories"
 #                      (the command splits the value itself; plain type is a free-form string)
 #
+#   cli_pass_through   "true" for a command whose trailing words are its own command line (jef exec). Scanning from the
+#                      start, the jef words (-d/--directory and the value flags, their values, and the boolean flags,
+#                      short, clustered short, long or long-only) are parsed as usual; the first word that is not one
+#                      of these (or the word after "--", which is dropped) starts the command: it and every word after
+#                      it go to cli_positional untouched, so their -h, -n, -- and -1 are not jef's. An unknown option
+#                      before the command is still "unknown option" (exit 2). Default false: every word is parsed.
+#
 # (declare "n|dry-run|dry_run|..." for commands that support --dry-run; see lib/repos.sh finish_run)
 # parse_options "$@" then sets: target_directory (only when -d is given),
 # clear_proxy, each extra-flag variable (true/false) and the cli_positional array.
@@ -59,12 +66,104 @@ usage_error() {
     exit 2
 }
 
+# Succeed when the long option $1 (without the dashes) takes a value: directory or a value flag.
+_is_value_long() {
+    local flag short long var meta default type desc
+    if [ "$1" = directory ]; then
+        return 0
+    fi
+    for flag in "${cli_value_flags[@]}"; do
+        IFS='|' read -r short long var meta default type desc <<< "$flag"
+        if [ "$1" = "$long" ]; then
+            return 0
+        fi
+    done
+    return 1
+}
+
+# Succeed when the short option $1 (one letter) takes a value: d or a value flag.
+_is_value_short() {
+    local flag short long var meta default type desc
+    if [ "$1" = d ]; then
+        return 0
+    fi
+    for flag in "${cli_value_flags[@]}"; do
+        IFS='|' read -r short long var meta default type desc <<< "$flag"
+        if [ "$1" = "$short" ]; then
+            return 0
+        fi
+    done
+    return 1
+}
+
+# cli_pass_through only: split "$@" into _jef_words (the words before the command, as given) and
+# cli_command_words (the command: from its first word on, after a "--" that is dropped).
+_split_pass_through() {
+    local word letters i ch name
+    local take_value=false in_command=false
+    _jef_words=()
+    cli_command_words=()
+    for word in "$@"; do
+        if $in_command; then
+            cli_command_words+=("$word")
+        elif $take_value; then
+            _jef_words+=("$word")
+            take_value=false
+        else
+            case "$word" in
+            --) in_command=true ;;
+            --*)
+                _jef_words+=("$word")
+                name="${word#--}"
+                case "$name" in
+                *=*) ;;
+                *)
+                    if _is_value_long "$name"; then
+                        take_value=true
+                    fi
+                    ;;
+                esac
+                ;;
+            -?*)
+                _jef_words+=("$word")
+                letters="${word#-}"
+                i=0
+                while [ "$i" -lt "${#letters}" ]; do
+                    ch="${letters:i:1}"
+                    if _is_value_short "$ch"; then
+                        # the rest of the cluster is the value, or else the next word
+                        if [ $((i + 1)) -eq "${#letters}" ]; then
+                            take_value=true
+                        fi
+                        break
+                    fi
+                    i=$((i + 1))
+                done
+                ;;
+            *)
+                in_command=true
+                cli_command_words+=("$word")
+                ;;
+            esac
+        fi
+    done
+}
+
 parse_options() {
     local OPTIND=1 opt arg flag short long var desc bad meta default type digits
     local optstring=":d:h" args
     args=()
     cli_positional=()
     clear_proxy=false
+
+    if [ "${cli_pass_through:-false}" = true ]; then
+        _split_pass_through "$@"
+        if [ ${#_jef_words[@]} -gt 0 ]; then
+            set -- "${_jef_words[@]}"
+        else
+            set --
+        fi
+    fi
 
     if [ "${cli_accepts_proxy:-false}" = true ]; then
         optstring+="c"
@@ -176,6 +275,9 @@ parse_options() {
     done
 
     cli_positional=("${args[@]:$((OPTIND - 1))}")
+    if [ "${cli_pass_through:-false}" = true ] && [ ${#cli_command_words[@]} -gt 0 ]; then
+        cli_positional+=("${cli_command_words[@]}")
+    fi
 }
 
 # Exit 2 with the usual message unless exactly $1 positional arguments were given.

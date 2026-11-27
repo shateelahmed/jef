@@ -7,6 +7,7 @@ print_commands() {
     echo "Commands:"
     printf "  %-10s %s\n" "checkout" "Check out a local branch in every repository that has it"
     printf "  %-10s %s\n" "delete" "Delete a branch locally (and optionally on the remote) in every repository"
+    printf "  %-10s %s\n" "exec" "Run a command in every repository"
     printf "  %-10s %s\n" "fetch" "Run 'git fetch --all --prune' in every repository"
     printf "  %-10s %s\n" "find" "Show whether a branch exists locally and on the remote in each repository"
     printf "  %-10s %s\n" "merge" "Merge one branch into another in every repository that has both"
