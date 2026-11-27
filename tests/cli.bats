@@ -6,7 +6,7 @@ setup_file() { build_fixture_template; }
 
 setup() { setup_workspace; }
 
-COMMANDS="checkout delete fetch find merge merged migrate pull push rebase which"
+COMMANDS="checkout delete fetch find merge merged migrate pull push rebase status which"
 
 @test "--help: every command prints usage and exits 0, even with no target directory" {
     local cmd
