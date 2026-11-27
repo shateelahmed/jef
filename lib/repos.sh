@@ -21,12 +21,58 @@ for_each_repo() {
 }
 
 # Succeed when $1 is a first-level directory that is a git repo and not in SKIP_DIRS.
-is_target_repo() {
+# The -m/--repo filter is ignored here (see validate_repo_filter).
+is_known_repo() {
     [ -d "$1" ] || return 1
     if is_skipped_directory "$1"; then # skip directories listed in SKIP_DIRS
         return 1
     fi
     is_git_repo "$1"
+}
+
+# Succeed when for_each_repo and list_repos visit $1: a known repository (is_known_repo) that is
+# named with -m/--repo when a filter is given. Names come from validate_repo_filter.
+is_target_repo() {
+    local dir_name
+    is_known_repo "$1" || return 1
+    if [ -n "${repo_filter:-}" ]; then
+        dir_name="$(get_directory_name "$1")"
+        case " ${repo_filter_names:-} " in
+        *" $dir_name "*) ;;
+        *) return 1 ;;
+        esac
+    fi
+    return 0
+}
+
+# Check the -m/--repo names (repo_filter: comma or space separated, repeatable) once, right after the
+# command's options are parsed (lib/common.sh calls this). Every name must be a repository the command
+# would visit without the filter (is_known_repo); the first unknown one is a usage error (exit 2).
+# Sets repo_filter_names to the accepted names, space separated, for is_target_repo.
+validate_repo_filter() {
+    local name names known_names="" child_directory nl=$'\n'
+    repo_filter_names=""
+    [ -n "${repo_filter:-}" ] || return 0
+    for child_directory in "$target_directory"/*/; do
+        if is_known_repo "$child_directory"; then
+            known_names+="${nl}$(get_directory_name "$child_directory")" # newline separated: a name may hold spaces
+        fi
+    done
+    set -f # the names are split on commas and spaces below and must not be glob-expanded
+    names=${repo_filter//,/ }
+    for name in $names; do
+        case "$known_names$nl" in
+        *"$nl$name$nl"*) repo_filter_names+=" $name" ;;
+        *)
+            set +f
+            usage_error "unknown repository '$name' (not a git repository in the target directory, or listed in SKIP_DIRS)"
+            ;;
+        esac
+    done
+    set +f
+    if [ -z "$repo_filter_names" ]; then
+        usage_error "option '-m/--repo' needs at least one repository name"
+    fi
 }
 
 # Fill the repo_list array with the repositories for_each_repo would visit, in order.

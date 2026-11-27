@@ -24,6 +24,9 @@ cli_extra_flags=(
     "n|dry-run|dry_run|Show what would happen without changing anything"
     "|abort|abort|Abort the merge in progress in every repository (takes no branches)"
 )
+cli_value_flags=(
+    "m|repo|repo_filter|REPOS||list|Only these repositories: -m a,b or -m \"a b\" or -m a -m b (also --repo a, --repo=a,b)"
+)
 parse_options "$@"
 if $abort; then
     if [ "${#cli_positional[@]}" -gt 0 ]; then
@@ -37,6 +40,7 @@ source "$script_location/lib/common.sh"
 
 if $abort; then
     echo "Target directory: ${green}$target_directory${reset}"
+    echo "Repositories: ${green}${repo_filter:-all}${reset}"
     echo "Action: ${green}abort${reset}"
     echo "Dry run: ${green}$dry_run${reset}"
 
@@ -97,6 +101,7 @@ if ! is_valid_branch_name "$target_branch"; then
 fi
 
 echo "Target directory: ${green}$target_directory${reset}"
+echo "Repositories: ${green}${repo_filter:-all}${reset}"
 echo "Source branch: ${green}$source_branch${reset}"
 echo "Target branch: ${green}$target_branch${reset}"
 echo "Clear proxy: ${green}$clear_proxy${reset}"

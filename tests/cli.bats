@@ -139,3 +139,60 @@ COMMANDS="checkout delete fetch find merge merged migrate pull push rebase statu
     refute_contains "unknown option"
     assert_contains "No stashes to clear"
 }
+
+# -m/--repo (lib/repos.sh): every repository command accepts it
+
+REPO_COMMANDS="checkout delete fetch find merge merged migrate pull push rebase stash status sync which"
+
+# repo_positionals <command>: the positional arguments a command needs, so that only -m is checked.
+repo_positionals() {
+    case "$1" in
+    checkout | delete | find | pull | push) echo feat ;;
+    merge | rebase) echo "feat main" ;;
+    *) ;;
+    esac
+}
+
+@test "-m/--repo: every repository command lists it in --help" {
+    local cmd
+    for cmd in $REPO_COMMANDS; do
+        run_cmd "$cmd" --help
+        [ "$status" -eq 0 ] || { echo "$cmd --help exited $status"; return 1; }
+        assert_contains "-m, --repo REPOS"
+    done
+}
+
+@test "-m/--repo: an unknown name exits 2 before anything runs, for every repository command" {
+    local cmd
+    for cmd in $REPO_COMMANDS; do
+        # shellcheck disable=SC2046 # word splitting of the positionals is intended
+        run_cmd "$cmd" -d "$WS" -m nosuch $(repo_positionals "$cmd")
+        [ "$status" -eq 2 ] || { echo "$cmd exited $status"; echo "$output"; return 1; }
+        assert_contains "unknown repository 'nosuch' (not a git repository in the target directory, or listed in SKIP_DIRS)"
+        assert_contains "Usage: jef $cmd"
+        refute_contains "Target directory:"
+    done
+}
+
+@test "-m/--repo: a SKIP_DIRS name and a plain directory are unknown names for every repository command" {
+    local cmd
+    for cmd in $REPO_COMMANDS; do
+        # shellcheck disable=SC2046
+        run_cmd "$cmd" -d "$WS" -m skipme $(repo_positionals "$cmd")
+        [ "$status" -eq 2 ] || { echo "$cmd skipme exited $status"; return 1; }
+        assert_contains "unknown repository 'skipme'"
+        # shellcheck disable=SC2046
+        run_cmd "$cmd" -d "$WS" --repo plain $(repo_positionals "$cmd")
+        [ "$status" -eq 2 ] || { echo "$cmd plain exited $status"; return 1; }
+        assert_contains "unknown repository 'plain'"
+    done
+}
+
+@test "-m/--repo: a name that is only a prefix or a comma-joined pair is unknown" {
+    run_cmd fetch -d "$WS" -m alp
+    assert_status 2
+    assert_contains "unknown repository 'alp'"
+    run_cmd fetch -d "$WS" -m "alpha,nosuch"
+    assert_status 2
+    assert_contains "unknown repository 'nosuch'"
+}

@@ -42,3 +42,19 @@ setup() { setup_workspace; }
     assert_contains "Clear proxy: true"
     assert_contains "Cleared proxy"
 }
+
+@test "fetch -m: fetches only the named repositories and counts only them" {
+    remote_commit alpha feat a.txt
+    remote_commit beta feat b.txt
+    remote_commit gamma feat c.txt
+    run_cmd fetch -d "$WS" -m alpha,gamma
+    assert_status 0
+    assert_contains "Repositories: alpha,gamma"
+    assert_contains "Working directory: alpha"
+    assert_contains "Working directory: gamma"
+    refute_contains "Working directory: beta"
+    assert_contains "Summary: 2 done, 0 failed, 0 skipped"
+    g alpha show-ref --quiet refs/remotes/origin/feat
+    g gamma show-ref --quiet refs/remotes/origin/feat
+    refute g beta show-ref --quiet refs/remotes/origin/feat
+}

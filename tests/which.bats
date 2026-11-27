@@ -25,3 +25,12 @@ setup() { setup_workspace; }
     [ -z "$(table_row plain)" ]
     refute_contains "loose-file"
 }
+
+@test "which -m: lists only the named repositories" {
+    run_cmd which -d "$WS" -m alpha,beta
+    assert_status 0
+    [ -n "$(table_row alpha)" ]
+    [ -n "$(table_row beta)" ]
+    [ -z "$(table_row gamma)" ]
+    case "$(table_row 'Target directory')" in *"$WS"*) ;; *) echo "$output"; return 1 ;; esac
+}

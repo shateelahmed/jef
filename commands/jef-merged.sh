@@ -29,7 +29,7 @@ cli_extra_flags=(
     "|include-empty|include_empty|With --delete: also delete branches that have no commits of their own"
 )
 cli_value_flags=(
-    "m|repo|repo_filter|REPOS||list|Only these repositories (comma or space separated, repeatable)"
+    "m|repo|repo_filter|REPOS||list|Only these repositories: -m a,b or -m \"a b\" or -m a -m b (also --repo a, --repo=a,b)"
 )
 parse_options "$@"
 require_args 0
@@ -62,35 +62,8 @@ if $delete_branches && $include_empty; then
     empties_deleted=true
 fi
 
-# Repositories to examine: all of them, or the ones named with -m (in the usual order)
+# Repositories: all of them, or only those named with -m (narrowed by list_repos)
 list_repos
-if [ -n "$repo_filter" ]; then
-    set -f # the names are split on spaces below and must not be glob-expanded
-    requested_names=${repo_filter//,/ }
-    for requested_name in $requested_names; do
-        requested_found=""
-        for child_directory in "${repo_list[@]}"; do
-            if [ "$(get_directory_name "$child_directory")" == "$requested_name" ]; then
-                requested_found="y"
-            fi
-        done
-        if [ -z "$requested_found" ]; then
-            set +f
-            usage_error "unknown repository '$requested_name' (not a git repository in the target directory, or listed in SKIP_DIRS)"
-        fi
-    done
-    selected_repos=()
-    for child_directory in "${repo_list[@]}"; do
-        for requested_name in $requested_names; do
-            if [ "$(get_directory_name "$child_directory")" == "$requested_name" ]; then
-                selected_repos+=("$child_directory")
-                break
-            fi
-        done
-    done
-    set +f
-    repo_list=("${selected_repos[@]}")
-fi
 
 if $want_local && $want_remote; then
     scope_text="local and remote"

@@ -21,6 +21,9 @@ cli_description="Push a branch to origin in every repository that has it locally
 cli_positionals="<branch>"
 cli_accepts_proxy=true
 cli_extra_flags=("n|dry-run|dry_run|Show what would happen without changing anything")
+cli_value_flags=(
+    "m|repo|repo_filter|REPOS||list|Only these repositories: -m a,b or -m \"a b\" or -m a -m b (also --repo a, --repo=a,b)"
+)
 parse_options "$@"
 require_args 1
 
@@ -34,6 +37,7 @@ if ! is_valid_branch_name "$branch_to_push"; then
 fi
 
 echo "Target directory: ${green}$target_directory${reset}"
+echo "Repositories: ${green}${repo_filter:-all}${reset}"
 echo "Branch to push: ${green}$branch_to_push${reset}"
 echo "Clear proxy: ${green}$clear_proxy${reset}"
 echo "Dry run: ${green}$dry_run${reset}"

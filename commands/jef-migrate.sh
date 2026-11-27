@@ -21,6 +21,7 @@ cli_description="Run each repository's command from MIGRATE_CMDS (e.g. its datab
 cli_positionals=""
 cli_extra_flags=("n|dry-run|dry_run|Show the commands that would run without running them")
 cli_value_flags=(
+    "m|repo|repo_filter|REPOS||list|Only these repositories: -m a,b or -m \"a b\" or -m a -m b (also --repo a, --repo=a,b)"
     "j|jobs|parallel_jobs|N|1|posint|Run up to N migrations at once (default 1)"
     "b|branch|branch_filter|BRANCH||string|Only repositories that have BRANCH checked out"
 )
@@ -119,17 +120,17 @@ lookup_command() {
 }
 
 echo "Target directory: ${green}$target_directory${reset}"
+echo "Repositories: ${green}${repo_filter:-all}${reset}"
 echo "Branch filter: ${green}${branch_filter:-any}${reset}"
 echo "Jobs: ${green}$parallel_jobs${reset}"
 echo "Dry run: ${green}$dry_run${reset}"
 
 # Entries naming a repository that is not in the target directory are reported, not fatal
 # (the same .env may be used with different -d targets).
-list_repos
 for name in "${migrate_names[@]}"; do
     known=""
-    for child_directory in "${repo_list[@]}"; do
-        if [ "$(get_directory_name "$child_directory")" == "$name" ]; then
+    for child_directory in "$target_directory"/*/; do # every repository, not only those named with -m
+        if is_known_repo "$child_directory" && [ "$(get_directory_name "$child_directory")" == "$name" ]; then
             known="y"
         fi
     done

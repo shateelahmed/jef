@@ -118,11 +118,23 @@ setup_base() {
     assert_status 2
 }
 
-@test "checkout: --repo without -b is a usage error" {
+@test "checkout -m without -b: checks the branch out in the named repositories only" {
     add_local_branch alpha feat
+    add_local_branch beta feat
     run_cmd checkout -d "$WS" -m alpha feat
+    assert_status 0
+    assert_contains "Repositories: alpha"
+    assert_contains "Working directory alpha"
+    refute_contains "Working directory beta"
+    [ "$(current_branch alpha)" = feat ]
+    [ "$(current_branch beta)" = main ]
+}
+
+@test "checkout -m without -b: an unknown name exits 2 and checks nothing out" {
+    add_local_branch alpha feat
+    run_cmd checkout -d "$WS" -m nosuch feat
     assert_status 2
-    assert_contains "can only be used with -b"
+    assert_contains "unknown repository 'nosuch'"
     [ "$(current_branch alpha)" = main ]
 }
 

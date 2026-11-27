@@ -197,3 +197,13 @@ EOF
     assert_contains "Migration failed in beta (exit 1)"
     assert_contains "Summary: 1 done, 1 failed, 1 skipped"
 }
+
+@test "migrate -m: an entry for a repository left out by -m does not warn; an unknown name still does" {
+    write_migrate_cmds "alpha:echo ran > migrated.txt; beta:echo ran > migrated.txt; nosuch:echo x"
+    run_cmd migrate -d "$WS" -m alpha
+    assert_status 0
+    refute_contains "MIGRATE_CMDS names 'beta'"
+    assert_contains "MIGRATE_CMDS names 'nosuch'"
+    [ "$(cat "$WS/alpha/migrated.txt")" = ran ]
+    [ ! -e "$WS/beta/migrated.txt" ]
+}

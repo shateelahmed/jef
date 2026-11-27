@@ -60,3 +60,17 @@ setup() { setup_workspace; }
     run_cmd pull -d "$WS" gone
     refute_contains "Working directory"
 }
+
+@test "pull -m: pulls only the named repositories (-m and --repo accumulate)" {
+    remote_commit alpha main a.txt
+    remote_commit beta main b.txt
+    remote_commit gamma main c.txt
+    run_cmd pull -d "$WS" -m alpha --repo beta main
+    assert_status 0
+    assert_contains "Working directory alpha"
+    assert_contains "Working directory beta"
+    refute_contains "Working directory gamma"
+    [ -f "$WS/alpha/a.txt" ]
+    [ -f "$WS/beta/b.txt" ]
+    [ ! -e "$WS/gamma/c.txt" ]
+}

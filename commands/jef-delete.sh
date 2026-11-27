@@ -25,6 +25,9 @@ cli_extra_flags=(
     "n|dry-run|dry_run|Show what would happen without changing anything"
     "y|yes|assume_yes|Delete without asking for confirmation"
 )
+cli_value_flags=(
+    "m|repo|repo_filter|REPOS||list|Only these repositories: -m a,b or -m \"a b\" or -m a -m b (also --repo a, --repo=a,b)"
+)
 parse_options "$@"
 require_args 1
 
@@ -39,6 +42,7 @@ if ! is_valid_branch_name "$branch_to_delete"; then
 fi
 
 echo "Target directory: ${green}$target_directory${reset}"
+echo "Repositories: ${green}${repo_filter:-all}${reset}"
 echo "Branch to delete: ${green}$branch_to_delete${reset}"
 echo "Clear proxy: ${green}$clear_proxy${reset}"
 echo "Delete remote branch: ${green}$delete_remote_branch${reset}"

@@ -20,6 +20,9 @@ cli_name="pull"
 cli_description="Fetch and pull a branch in every repository whose remote has it"
 cli_positionals="<branch>"
 cli_accepts_proxy=true
+cli_value_flags=(
+    "m|repo|repo_filter|REPOS||list|Only these repositories: -m a,b or -m \"a b\" or -m a -m b (also --repo a, --repo=a,b)"
+)
 parse_options "$@"
 require_args 1
 
@@ -33,6 +36,7 @@ if ! is_valid_branch_name "$branch_to_pull"; then
 fi
 
 echo "Target directory: ${green}$target_directory${reset}"
+echo "Repositories: ${green}${repo_filter:-all}${reset}"
 echo "Branch to pull: ${green}$branch_to_pull${reset}"
 echo "Clear proxy: ${green}$clear_proxy${reset}"
 

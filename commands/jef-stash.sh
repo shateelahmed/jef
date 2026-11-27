@@ -28,6 +28,9 @@ cli_extra_flags=(
     "|pop|pop_stash|Run 'git stash pop' (the latest stash) in every repository that has one"
     "|list|list_stashes|List the stashes of every repository (changes nothing)"
 )
+cli_value_flags=(
+    "m|repo|repo_filter|REPOS||list|Only these repositories: -m a,b or -m \"a b\" or -m a -m b (also --repo a, --repo=a,b)"
+)
 parse_options "$@"
 require_args 0
 
@@ -62,6 +65,7 @@ source "$script_location/lib/common.sh"
 source "$script_location/lib/confirm.sh"
 
 echo "Target directory: ${green}$target_directory${reset}"
+echo "Repositories: ${green}${repo_filter:-all}${reset}"
 echo "Action: ${green}$action${reset}"
 if [ "$action" = stash ]; then
     echo "Include untracked: ${green}$include_untracked${reset}"

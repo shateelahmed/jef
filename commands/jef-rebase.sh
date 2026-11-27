@@ -25,6 +25,9 @@ cli_extra_flags=(
     "n|dry-run|dry_run|Show what would happen without changing anything"
     "y|yes|assume_yes|Rebase without asking for confirmation"
 )
+cli_value_flags=(
+    "m|repo|repo_filter|REPOS||list|Only these repositories: -m a,b or -m \"a b\" or -m a -m b (also --repo a, --repo=a,b)"
+)
 parse_options "$@"
 require_args 2
 
@@ -44,6 +47,7 @@ if ! is_valid_branch_name "$onto_branch"; then
 fi
 
 echo "Target directory: ${green}$target_directory${reset}"
+echo "Repositories: ${green}${repo_filter:-all}${reset}"
 echo "Branch: ${green}$branch_to_rebase${reset}"
 echo "Onto: ${green}$onto_branch${reset}"
 echo "Clear proxy: ${green}$clear_proxy${reset}"

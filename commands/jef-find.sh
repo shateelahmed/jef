@@ -20,7 +20,9 @@ cli_name="find"
 cli_description="Show whether a branch exists locally and on the remote in each repository"
 cli_positionals="<branch>"
 cli_accepts_proxy=true
-cli_value_flags=("j|jobs|parallel_jobs|N|1|posint|Look up up to N repositories at once (default 1)")
+cli_value_flags=(
+    "m|repo|repo_filter|REPOS||list|Only these repositories: -m a,b or -m \"a b\" or -m a -m b (also --repo a, --repo=a,b)"
+    "j|jobs|parallel_jobs|N|1|posint|Look up up to N repositories at once (default 1)")
 parse_options "$@"
 require_args 1
 
@@ -34,6 +36,7 @@ if ! is_valid_branch_name "$branch_to_find"; then
 fi
 
 echo -e "Target directory           : ${green}$target_directory${reset}"
+echo -e "Repositories               : ${green}${repo_filter:-all}${reset}"
 echo -e "Branch to find             : ${green}$branch_to_find${reset}"
 echo -e "Clear proxy                : ${green}$clear_proxy${reset}"
 

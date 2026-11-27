@@ -59,3 +59,14 @@ setup() { setup_workspace; }
     done <<< "$output"
     [ "$count" -ge 6 ]
 }
+
+@test "find -m: looks up only the named repositories" {
+    add_local_branch alpha feat
+    add_local_branch beta feat
+    run_cmd find -d "$WS" -m alpha feat
+    assert_status 0
+    assert_contains "Repositories               : alpha"
+    case "$(table_row alpha)" in *✔*) ;; *) echo "$output"; return 1 ;; esac
+    [ -z "$(table_row beta)" ]
+    [ -z "$(table_row gamma)" ]
+}

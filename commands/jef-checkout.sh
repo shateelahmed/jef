@@ -24,7 +24,7 @@ cli_extra_flags=(
     "b|new|create_new|Create <new_branch> from <base> and check it out in the repositories you pick"
 )
 cli_value_flags=(
-    "m|repo|repo_filter|REPOS||list|With -b: create in these repositories instead of showing the picker (comma or space separated, repeatable)"
+    "m|repo|repo_filter|REPOS||list|Only these repositories: -m a,b or -m \"a b\" or -m a -m b (also --repo a, --repo=a,b); with -b, no picker"
 )
 # Options may also follow the positionals (jef checkout -b feat main -m alpha): move them first,
 # since getopts stops at the first positional argument.
@@ -47,9 +47,6 @@ done
 set -- "${leading_args[@]}" "${trailing_args[@]}"
 
 parse_options "$@"
-if ! $create_new && [ -n "$repo_filter" ]; then
-    usage_error "option '-m/--repo' can only be used with -b"
-fi
 if $create_new; then
     require_args 2
 else
@@ -82,6 +79,7 @@ if $create_new; then
     source "$script_location/lib/select.sh"
 
     echo "Target directory: ${green}$target_directory${reset}"
+    echo "Repositories: ${green}${repo_filter:-all}${reset}"
     echo "New branch: ${green}$new_branch${reset}"
     echo "Base: ${green}$base_ref${reset}"
 
@@ -115,31 +113,12 @@ if $create_new; then
     done
 
     chosen_indexes=()
-    if [ -n "$repo_filter" ]; then
-        # Repositories named with -m, by directory name (unknown names exit 2, as in jef merged)
-        set -f # the names are split on spaces below and must not be glob-expanded
-        requested_names=${repo_filter//,/ }
-        for requested_name in $requested_names; do
-            requested_found=""
-            for label in "${select_labels[@]}"; do
-                if [ "$label" == "$requested_name" ]; then
-                    requested_found="y"
-                fi
-            done
-            if [ -z "$requested_found" ]; then
-                set +f
-                usage_error "unknown repository '$requested_name' (not a git repository in the target directory, or listed in SKIP_DIRS)"
-            fi
-        done
+    if [ -n "${repo_filter}" ]; then
+        # -m: choose every repository list_repos kept (the ones named with -m) without the picker;
+        # unavailable ones are reported with their reason and counted as skipped below
         for ((i = 0; i < ${#select_labels[@]}; i++)); do
-            for requested_name in $requested_names; do
-                if [ "${select_labels[$i]}" == "$requested_name" ]; then
-                    chosen_indexes+=("$i")
-                    break
-                fi
-            done
+            chosen_indexes+=("$i")
         done
-        set +f
     elif [ -t 0 ] && [ -t 1 ]; then
         if ! $any_available; then
             for ((i = 0; i < ${#select_labels[@]}; i++)); do
@@ -193,6 +172,7 @@ if $create_new; then
 fi
 
 echo "Target directory: ${green}$target_directory${reset}"
+echo "Repositories: ${green}${repo_filter:-all}${reset}"
 echo "Branch to checkout: ${green}$branch_to_checkout${reset}"
 
 checkout_repo() {

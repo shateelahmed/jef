@@ -19,6 +19,9 @@ source "$script_location/lib/cli.sh"
 cli_name="which"
 cli_description="Show the currently checked out branch of each repository"
 cli_positionals=""
+cli_value_flags=(
+    "m|repo|repo_filter|REPOS||list|Only these repositories: -m a,b or -m \"a b\" or -m a -m b (also --repo a, --repo=a,b)"
+)
 parse_options "$@"
 
 source "$script_location/lib/common.sh"

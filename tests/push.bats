@@ -188,3 +188,23 @@ pushed_count() { if [ -f "$PUSH_LOG" ]; then grep -c . "$PUSH_LOG"; else echo 0;
     [ "$(current_branch alpha)" = main ]
     [ "$(current_branch beta)" = main ]
 }
+
+@test "push -m: pushes only the named repositories" {
+    add_local_branch alpha feat
+    add_local_branch beta feat
+    run_cmd push -d "$WS" -m alpha feat
+    assert_status 0
+    assert_contains "Repositories: alpha"
+    assert_contains "Working directory alpha"
+    refute_contains "Working directory beta"
+    origin_has_branch alpha feat
+    refute origin_has_branch beta feat
+}
+
+@test "push -m: an unknown name is a usage error and pushes nothing" {
+    add_local_branch alpha feat
+    run_cmd push -d "$WS" -m alpha,nosuch feat
+    assert_status 2
+    assert_contains "unknown repository 'nosuch'"
+    refute origin_has_branch alpha feat
+}

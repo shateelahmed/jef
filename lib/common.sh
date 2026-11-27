@@ -13,3 +13,4 @@ source "$script_location/lib/directory-name.sh"
 source "$script_location/lib/terminal-color-codes.sh"
 source "$script_location/lib/max-length.sh"
 source "$script_location/lib/repos.sh"
+validate_repo_filter # -m/--repo names: exits 2 on an unknown one (no-op without -m)

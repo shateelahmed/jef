@@ -53,7 +53,7 @@ Your `.env` lives in the repository clone, so no `.env` migration is needed.
 
 ## Usage
 - Run `jef help` (or `jef`, `jef -h`, `jef --help`) to list the commands, `jef help <command>` or `jef <command> --help` to see a command's options. An unknown command exits with `127`.
-- Run `jef checkout <branch_name>` to checkout to a specific branch. Run `jef checkout -b <new_branch> <base>` to create `<new_branch>` from `<base>` (a branch, tag or commit; a branch that exists only on `origin` is used as `origin/<base>`) and check it out in the repositories you pick: a checkbox list is shown (Up/Down or `k`/`j` move, Space ticks, `a` ticks all, Enter confirms, `q` or Esc cancels; repositories that already have the branch or lack the base are listed but cannot be ticked; if none can, nothing is shown to pick and the command exits `1`). Add `-m`/`--repo alpha,beta` to name the repositories instead (required when there is no terminal)
+- Run `jef checkout <branch_name>` to checkout to a specific branch. Run `jef checkout -b <new_branch> <base>` to create `<new_branch>` from `<base>` (a branch, tag or commit; a branch that exists only on `origin` is used as `origin/<base>`) and check it out in the repositories you pick: a checkbox list is shown (Up/Down or `k`/`j` move, Space ticks, `a` ticks all, Enter confirms, `q` or Esc cancels; repositories that already have the branch or lack the base are listed but cannot be ticked; if none can, nothing is shown to pick and the command exits `1`). Add `-m`/`--repo alpha,beta` to name the repositories instead (required when there is no terminal); with `-b` every named repository is chosen without the picker. Without `-b`, `-m` only limits the checkout to the named repositories that have the branch
 - Run `jef delete <branch_name>` to delete a branch locally. Add `-r` before the `<branch_name>` to delete the branch from remote. It first prints what will be deleted in each repository (local, remote or both) and asks for confirmation; add `-y` to skip the question (required when there is no terminal, e.g. in scripts). Example:
 
   ```
@@ -140,22 +140,33 @@ Commands and flags (all accept `-d`/`--directory <dir>` to override `TARGET_DIR`
 
 | Command | Arguments | Extra flags |
 | --- | --- | --- |
-| `jef checkout` | `<branch>`, or `-b <new_branch> <base>` | `-b`/`--new`, `-m`/`--repo REPOS` (only with `-b`) |
-| `jef delete` | `<branch>` | `-c`/`--clear-proxy`, `-r`/`--delete-remote-branch`, `-n`/`--dry-run`, `-y`/`--yes` |
-| `jef fetch` | | `-c`/`--clear-proxy`, `-j`/`--jobs N` |
-| `jef find` | `<branch>` | `-c`/`--clear-proxy`, `-j`/`--jobs N` |
-| `jef merge` | `<source_branch> <destination_branch>` | `-c`/`--clear-proxy`, `-n`/`--dry-run`, `--abort` |
+| `jef checkout` | `<branch>`, or `-b <new_branch> <base>` | `-b`/`--new`, `-m`/`--repo REPOS` |
+| `jef delete` | `<branch>` | `-c`/`--clear-proxy`, `-r`/`--delete-remote-branch`, `-m`/`--repo REPOS`, `-n`/`--dry-run`, `-y`/`--yes` |
+| `jef fetch` | | `-c`/`--clear-proxy`, `-m`/`--repo REPOS`, `-j`/`--jobs N` |
+| `jef find` | `<branch>` | `-c`/`--clear-proxy`, `-m`/`--repo REPOS`, `-j`/`--jobs N` |
+| `jef merge` | `<source_branch> <destination_branch>` | `-c`/`--clear-proxy`, `-m`/`--repo REPOS`, `-n`/`--dry-run`, `--abort` |
 | `jef merged` | | `-c`/`--clear-proxy`, `-l`/`--local`, `-r`/`--remote`, `-m`/`--repo REPOS`, `-D`/`--delete`, `-n`/`--dry-run`, `-y`/`--yes`, `--include-empty` |
-| `jef migrate` | | `-n`/`--dry-run`, `-j`/`--jobs N`, `-b`/`--branch BRANCH` |
-| `jef pull` | `<branch>` | `-c`/`--clear-proxy` |
-| `jef push` | `<branch>` | `-c`/`--clear-proxy`, `-n`/`--dry-run` |
-| `jef rebase` | `<branch> <onto_branch>` | `-c`/`--clear-proxy`, `-p`/`--push`, `-n`/`--dry-run`, `-y`/`--yes` |
-| `jef stash` | | `-u`/`--include-untracked`, `--clear`, `--pop`, `--list`, `-n`/`--dry-run`, `-y`/`--yes` (with `--clear`) |
+| `jef migrate` | | `-m`/`--repo REPOS`, `-n`/`--dry-run`, `-j`/`--jobs N`, `-b`/`--branch BRANCH` |
+| `jef pull` | `<branch>` | `-c`/`--clear-proxy`, `-m`/`--repo REPOS` |
+| `jef push` | `<branch>` | `-c`/`--clear-proxy`, `-m`/`--repo REPOS`, `-n`/`--dry-run` |
+| `jef rebase` | `<branch> <onto_branch>` | `-c`/`--clear-proxy`, `-m`/`--repo REPOS`, `-p`/`--push`, `-n`/`--dry-run`, `-y`/`--yes` |
+| `jef stash` | | `-u`/`--include-untracked`, `--clear`, `--pop`, `--list`, `-m`/`--repo REPOS`, `-n`/`--dry-run`, `-y`/`--yes` (with `--clear`) |
 | `jef status` | | `-c`/`--clear-proxy`, `-f`/`--fetch`, `-m`/`--repo REPOS` |
 | `jef sync` | | `-c`/`--clear-proxy`, `-r`/`--rebase`, `-m`/`--repo REPOS`, `-j`/`--jobs N`, `-n`/`--dry-run`, `-y`/`--yes` |
-| `jef which` | | |
+| `jef which` | | `-m`/`--repo REPOS` |
 
 Notes:
+- `-m`/`--repo REPOS` (every repository command: `checkout`, `delete`, `fetch`, `find`, `merge`, `merged`, `migrate`, `pull`, `push`, `rebase`, `stash`, `status`, `sync`, `which`) limits the command to the named repositories, given by directory name. All of these name the same two repositories (the names accumulate):
+
+  ```
+  jef status -m alpha,beta            # comma separated
+  jef status -m "alpha beta"          # space separated (quoted, so it stays one value)
+  jef status -m alpha -m beta         # repeated
+  jef status --repo alpha --repo beta # long form
+  jef status --repo=alpha,beta        # long form with =
+  ```
+
+  Without quotes, `-m alpha beta` names only `alpha`: `beta` becomes a positional argument. The repositories always run in the usual alphabetical order, whatever order they are named in. The other repositories are not visited, printed or counted, and checks such as `Branch '<name>' does not exist in any repository` only look at the named ones. The banner shows `Repositories: all` or the names given. A name that is not a repository the command would visit (not a git repository in the target directory, or listed in `SKIP_DIRS`) is a usage error: `unknown repository '<name>' ...`, exit `2`, before anything runs.
 - Every first level directory that contains a `.git` directory or file is included, so git worktrees and submodules count as repositories. Paths and directory names containing spaces work.
 - Branch names starting with `-` are rejected.
 - Output: colours are used only when stdout is a terminal and the `NO_COLOR` environment variable is unset or empty (see https://no-color.org); piped or redirected output (including `jef find` and `jef which` tables) is plain text without escape codes or spinner characters.

@@ -277,3 +277,17 @@ rebase_in_progress() {
     refute_contains "skipme"
     refute_contains "Will rebase"
 }
+
+@test "rebase -m: rebases only the named repositories" {
+    diverge alpha feat main
+    diverge beta feat main
+    run_cmd rebase -y -d "$WS" -m alpha feat main
+    assert_status 0
+    assert_contains "Repositories: alpha"
+    assert_contains "Working directory alpha"
+    refute_contains "Working directory beta"
+    assert_contains "Summary: 1 done, 0 failed, 0 skipped"
+    g alpha merge-base --is-ancestor main feat
+    [ -f "$WS/alpha/main-feat.txt" ]
+    refute g beta merge-base --is-ancestor main feat
+}

@@ -153,3 +153,49 @@ make_conflict() {
     assert_status 0
     assert_contains "    --abort"
 }
+
+@test "merge -m: a branch that only an unnamed repository has is not found" {
+    add_local_branch beta feat
+    run_cmd merge -d "$WS" -m alpha feat main
+    assert_status 2
+    assert_contains "Branch 'feat' does not exist in any repository"
+    refute_contains "Working directory"
+    [ "$(current_branch alpha)" = main ]
+}
+
+@test "merge -m: merges only in the named repositories" {
+    add_local_branch alpha dst
+    add_local_branch alpha src
+    g alpha checkout -q src
+    commit_on alpha s.txt
+    add_local_branch beta dst
+    add_local_branch beta src
+    run_cmd merge -d "$WS" -m alpha src dst
+    assert_status 0
+    assert_contains "Repositories: alpha"
+    assert_contains "Working directory alpha"
+    refute_contains "Working directory beta"
+    [ "$(current_branch alpha)" = dst ]
+    g alpha merge-base --is-ancestor src dst
+    [ "$(current_branch beta)" = main ]
+}
+
+@test "merge --abort -m: aborts only in the named repositories" {
+    g alpha checkout -q -b feat
+    commit_on alpha file.txt
+    g alpha checkout -q main
+    commit_on alpha file.txt
+    g alpha merge feat >/dev/null 2>&1 || true
+    g beta checkout -q -b feat
+    commit_on beta file.txt
+    g beta checkout -q main
+    commit_on beta file.txt
+    g beta merge feat >/dev/null 2>&1 || true
+    [ -f "$WS/alpha/.git/MERGE_HEAD" ]
+    [ -f "$WS/beta/.git/MERGE_HEAD" ]
+    run_cmd merge --abort -d "$WS" -m alpha
+    assert_status 0
+    refute_contains "Working directory beta"
+    [ ! -f "$WS/alpha/.git/MERGE_HEAD" ]
+    [ -f "$WS/beta/.git/MERGE_HEAD" ]
+}

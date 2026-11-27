@@ -284,3 +284,15 @@ stash_tty() {
     assert_contains "option '-y/--yes' can only be used with --clear"
     [ "$(stash_count alpha)" = 1 ]
 }
+
+@test "stash -m: stashes only the named repositories" {
+    change_tracked alpha
+    change_tracked beta
+    run_cmd stash -d "$WS" -m alpha
+    assert_status 0
+    assert_contains "Repositories: alpha"
+    assert_contains "Working directory alpha"
+    refute_contains "Working directory beta"
+    [ -z "$(g alpha status --porcelain)" ]
+    [ -n "$(g beta status --porcelain)" ]
+}

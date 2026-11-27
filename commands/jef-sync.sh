@@ -26,7 +26,7 @@ cli_extra_flags=(
     "y|yes|assume_yes|Sync without asking for confirmation"
 )
 cli_value_flags=(
-    "m|repo|repo_filter|REPOS||list|Only these repositories (comma or space separated, repeatable)"
+    "m|repo|repo_filter|REPOS||list|Only these repositories: -m a,b or -m \"a b\" or -m a -m b (also --repo a, --repo=a,b)"
     "j|jobs|parallel_jobs|N||posint|Sync up to N repositories at once (default: all of them)"
 )
 parse_options "$@"
@@ -56,35 +56,8 @@ echo "Dry run: ${green}$dry_run${reset}"
 
 source "$script_location/lib/clear-proxy.sh"
 
-# Repositories to sync: all of them, or the ones named with -m (in the usual order)
+# Repositories: all of them, or only those named with -m (narrowed by list_repos)
 list_repos
-if [ -n "$repo_filter" ]; then
-    set -f # the names are split on spaces below and must not be glob-expanded
-    requested_names=${repo_filter//,/ }
-    for requested_name in $requested_names; do
-        requested_found=""
-        for child_directory in "${repo_list[@]}"; do
-            if [ "$(get_directory_name "$child_directory")" == "$requested_name" ]; then
-                requested_found="y"
-            fi
-        done
-        if [ -z "$requested_found" ]; then
-            set +f
-            usage_error "unknown repository '$requested_name' (not a git repository in the target directory, or listed in SKIP_DIRS)"
-        fi
-    done
-    selected_repos=()
-    for child_directory in "${repo_list[@]}"; do
-        for requested_name in $requested_names; do
-            if [ "$(get_directory_name "$child_directory")" == "$requested_name" ]; then
-                selected_repos+=("$child_directory")
-                break
-            fi
-        done
-    done
-    set +f
-    repo_list=("${selected_repos[@]}")
-fi
 parallel_use_repo_list=true # parallel_run must run exactly these repositories
 
 # Every repository at once unless -j caps it

@@ -281,3 +281,18 @@ refs_snapshot() {
     refute_contains "Working directory beta"
     assert_contains "Summary: 1 done, 0 failed, 2 skipped"
 }
+
+@test "delete -m: deletes the branch only in the named repositories" {
+    add_local_branch alpha feat
+    add_local_branch beta feat
+    add_local_branch gamma feat
+    run_cmd delete -y -d "$WS" -m alpha,gamma feat
+    assert_status 0
+    assert_contains "Repositories: alpha,gamma"
+    assert_contains "local deleted: alpha"
+    assert_contains "local deleted: gamma"
+    refute_contains "beta"
+    refute g alpha show-ref --quiet --heads feat
+    refute g gamma show-ref --quiet --heads feat
+    g beta show-ref --quiet --heads feat
+}

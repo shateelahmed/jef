@@ -67,15 +67,15 @@ When `-b` is given without `-m` and stdin and stdout are terminals, the system S
 - **THEN** "Aborted. Nothing was created." is printed, no repository is changed and the command exits 1
 
 ### Requirement: Choose repositories without the picker
-`-m`/`--repo REPOS` (comma or space separated, repeatable) SHALL select repositories by directory name without showing the picker, and SHALL only be accepted together with `-b` (otherwise exit 2). Named repositories that are unavailable SHALL be reported with the reason and counted as skipped.
+`-m`/`--repo REPOS` (comma or space separated, repeatable) SHALL limit `jef checkout` to the named repositories, with or without `-b`. With `-b` it SHALL select those repositories without showing the picker; named repositories that are unavailable SHALL be reported with the reason and counted as skipped. Without `-b` the branch SHALL be checked out only in the named repositories that have it.
 
 #### Scenario: Repositories named on the command line
 - **WHEN** `jef checkout -b feat main -m alpha,beta` is run
 - **THEN** `feat` is created and checked out in `alpha` and `beta` only, and no picker is shown
 
 #### Scenario: -m without -b
-- **WHEN** `jef checkout -m alpha feat` is run
-- **THEN** a usage error is printed and the command exits 2
+- **WHEN** `jef checkout -m alpha feat` is run and `alpha` and `beta` both have `feat`
+- **THEN** `feat` is checked out in `alpha` only
 
 ### Requirement: Reject unknown repositories and missing terminal
 Unknown names given to `-m` SHALL be reported and the command SHALL exit 2 without changing anything. Without a terminal and without `-m`, the command SHALL print "Not running in a terminal. Re-run with --repo to choose repositories. Nothing was created." and exit 2.

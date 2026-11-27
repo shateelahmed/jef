@@ -20,12 +20,15 @@ cli_name="fetch"
 cli_description="Run 'git fetch --all --prune' in every repository"
 cli_positionals=""
 cli_accepts_proxy=true
-cli_value_flags=("j|jobs|parallel_jobs|N|1|posint|Fetch up to N repositories at once (default 1)")
+cli_value_flags=(
+    "m|repo|repo_filter|REPOS||list|Only these repositories: -m a,b or -m \"a b\" or -m a -m b (also --repo a, --repo=a,b)"
+    "j|jobs|parallel_jobs|N|1|posint|Fetch up to N repositories at once (default 1)")
 parse_options "$@"
 
 source "$script_location/lib/common.sh"
 
 echo "Target directory: ${green}$target_directory${reset}"
+echo "Repositories: ${green}${repo_filter:-all}${reset}"
 echo "Clear proxy: ${green}$clear_proxy${reset}"
 
 source "$script_location/lib/clear-proxy.sh"
